@@ -25,7 +25,7 @@ async function runTests() {
     console.log('Test 1: Create IdP instance');
     const idp = new PigeonIdP({
       namespace: 'test-namespace',
-      signalingServers: ['wss://signal.peerpigeon.com']
+      signalingServers: ['wss://pigeonhub.fli.dev']
     });
     assert(idp !== null, 'IdP instance created');
     assert(idp.namespace === 'test-namespace', 'Namespace set correctly');

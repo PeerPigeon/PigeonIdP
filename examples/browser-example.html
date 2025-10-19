@@ -96,6 +96,10 @@
     <div class="status disconnected" id="status">
       Status: Not Connected
     </div>
+    
+    <div class="status disconnected" id="peerStatus">
+      Connected Peers: 0
+    </div>
 
     <div class="section">
       <h2>Configuration</h2>
@@ -116,8 +120,11 @@
     <div class="section">
       <h2>Identity Management</h2>
       <button onclick="initializeIdP()">Initialize IdP</button>
+      <button onclick="refreshPeers()" id="refreshBtn" disabled>Refresh Peers</button>
       <button onclick="createIdentity()" id="createBtn" disabled>Create Identity</button>
       <button onclick="loadIdentity()" id="loadBtn" disabled>Load Identity</button>
+      <button onclick="clearStoredKeys()" id="clearBtn" disabled style="background-color: #e74c3c;">Clear Stored Keys</button>
+      <button onclick="retrieveFromDHT()" id="retrieveBtn" disabled>Retrieve from DHT</button>
       <button onclick="registerIdentity()" id="registerBtn" disabled>Register in DHT</button>
     </div>
 
@@ -134,12 +141,27 @@
         <input type="text" id="message" value="Hello from browser!" />
       </label>
       <button onclick="signMessage()" id="signBtn" disabled>Sign Message</button>
+      <button onclick="verifySignature()" id="verifySignBtn" disabled>Verify Signature</button>
       <button onclick="encryptMessage()" id="encryptBtn" disabled>Encrypt Message</button>
+      <button onclick="decryptMessage()" id="decryptBtn" disabled>Decrypt Message</button>
+    </div>
+    
+    <div class="section">
+      <h2>Cross-Browser Verification</h2>
+      <label>
+        Signature to verify: 
+        <input type="text" id="signatureInput" placeholder="Paste signature here" style="width: 300px;" />
+      </label>
+      <label>
+        Public Key: 
+        <input type="text" id="publicKeyInput" placeholder="Paste public key here" style="width: 300px;" />
+      </label>
     </div>
 
     <div class="section">
       <h2>Export/Import</h2>
       <button onclick="exportKeys()" id="exportBtn" disabled>Export Keys</button>
+      <button onclick="importKeys()" id="importBtn" disabled>Import Keys</button>
       <button onclick="disconnect()" id="disconnectBtn" disabled>Disconnect</button>
     </div>
 
@@ -147,10 +169,372 @@
     <div class="log" id="log"></div>
   </div>
 
+  <!-- Load PeerPigeon browser bundle (includes UnSEA) -->
+  <script src="../node_modules/peerpigeon/dist/peerpigeon-browser.js"></script>
+  
   <script type="module">
-    // Import PigeonIdP from CDN (in production, bundle with your app)
-    // For local testing, you would build and serve this file
-    import { PigeonIdP } from '../index.js';
+    // Get PeerPigeon components and UnSEA from the browser bundle
+    const { PeerPigeonMesh, WebDHT } = window.PeerPigeon || PeerPigeon;
+    const UnSEA = window.__PEERPIGEON_UNSEA__;
+    
+    // Helper function to derive deterministic keys from password
+    async function deriveKeysFromPassword(seed) {
+      // Generate deterministic keys by deriving private keys from password
+      // then using UnSEA's internal p256 curve to compute public keys
+      
+      console.log('🔑 Deriving deterministic keys from password');
+      
+      const encoder = new TextEncoder();
+      
+      // Use PBKDF2 to derive deterministic private keys
+      const keyMaterial = await crypto.subtle.importKey(
+        'raw',
+        encoder.encode(seed),
+        { name: 'PBKDF2' },
+        false,
+        ['deriveBits']
+      );
+      
+      const salt = encoder.encode('PigeonIdP-v1');
+      
+      // Derive 64 bytes: 32 for signing key, 32 for encryption key
+      const derivedBits = await crypto.subtle.deriveBits(
+        {
+          name: 'PBKDF2',
+          salt: salt,
+          iterations: 100000,
+          hash: 'SHA-256'
+        },
+        keyMaterial,
+        512 // 64 bytes
+      );
+      
+      const derivedArray = new Uint8Array(derivedBits);
+      const signingPriv = derivedArray.slice(0, 32);
+      const encryptionPriv = derivedArray.slice(32, 64);
+      
+      // Helper functions (copied from UnSEA internals)
+      const bufToB64Url = (buf) => {
+        const bin = String.fromCharCode(...new Uint8Array(buf));
+        return btoa(bin).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+      };
+      
+      const keyToJWK = (pubBuf) => {
+        if (pubBuf[0] !== 4) throw new Error('Expected uncompressed key');
+        const x = pubBuf.slice(1, 33);
+        const y = pubBuf.slice(33, 65);
+        return `${bufToB64Url(x)}.${bufToB64Url(y)}`;
+      };
+      
+      // OK so Web Crypto API won't compute x,y from d automatically
+      // We need to use noble-curves which is already in UnSEA
+      // Let's access it via a clever trick: monkey-patch generateRandomPair temporarily
+      
+      // HACK: Inject our deterministic private keys by overriding crypto.getRandomValues
+      const originalGetRandomValues = crypto.getRandomValues.bind(crypto);
+      let callCount = 0;
+      
+      console.log('🔧 Monkey-patching crypto.getRandomValues for deterministic key generation');
+      console.log('Derived signing key (first 16 bytes):', Array.from(signingPriv.slice(0, 16)).map(b => b.toString(16).padStart(2, '0')).join(''));
+      console.log('Derived encryption key (first 16 bytes):', Array.from(encryptionPriv.slice(0, 16)).map(b => b.toString(16).padStart(2, '0')).join(''));
+      
+      crypto.getRandomValues = function(array) {
+        console.log(`crypto.getRandomValues called with array length: ${array.length}, callCount: ${callCount}`);
+        
+        // UnSEA might request 32 bytes (just the key) or 48 bytes (key + extra data)
+        // We need to inject our deterministic bytes for the first two calls regardless of size
+        if (callCount === 0 && array.length >= 32) {
+          // First call: signing private key
+          array.set(signingPriv, 0);
+          console.log(`✅ Injected deterministic SIGNING key (first 32 bytes of ${array.length}-byte array)`);
+          callCount++;
+          return array;
+        } else if (callCount === 1 && array.length >= 32) {
+          // Second call: encryption private key
+          array.set(encryptionPriv, 0);
+          console.log(`✅ Injected deterministic ENCRYPTION key (first 32 bytes of ${array.length}-byte array)`);
+          callCount++;
+          return array;
+        }
+        
+        console.log(`⚠️ Using original random values (length=${array.length}, callCount=${callCount})`);
+        return originalGetRandomValues(array);
+      };
+      
+      try {
+        // Now generate keys - they'll use our deterministic values
+        console.log('Calling UnSEA.generateRandomPair()...');
+        const keys = await UnSEA.generateRandomPair();
+        
+        console.log('✅ Deterministic keys generated successfully!');
+        console.log('📍 Public key fingerprint:', keys.pub.substring(0, 20) + '...');
+        console.log('📍 Full public key:', keys.pub);
+        console.log(`Total crypto.getRandomValues calls intercepted: ${callCount}`);
+        
+        return keys;
+        
+      } finally {
+        // Restore original function
+        crypto.getRandomValues = originalGetRandomValues;
+        console.log('🔧 Restored original crypto.getRandomValues');
+      }
+    }
+    
+    // Inline PigeonIdP class for browser compatibility
+    class PigeonIdP {
+      constructor(options = {}) {
+        this.namespace = options.namespace || 'default';
+        this.signalingServers = options.signalingServers || ['ws://localhost:3000'];
+        this.meshOptions = options.meshOptions || {};
+        
+        this.mesh = null;
+        this.webDHT = null;
+        this.keys = null;
+        this.initialized = false;
+      }
+
+      async init() {
+        if (this.initialized) {
+          return;
+        }
+
+        this.mesh = new PeerPigeonMesh({
+          networkName: this.namespace,
+          enableWebDHT: true,  // Ensure WebDHT is enabled
+          autoConnect: true,
+          autoDiscovery: true,
+          maxPeers: 10,
+          minPeers: 1,
+          ...this.meshOptions
+        });
+
+        await this.mesh.init();
+        
+        // Connect to signaling server
+        const signalingServer = this.signalingServers[0];
+        await this.mesh.connect(signalingServer);
+
+        // Use the mesh's built-in WebDHT instead of creating a new one
+        this.webDHT = this.mesh.webDHT;
+        
+        if (!this.webDHT) {
+          throw new Error('WebDHT not initialized on mesh');
+        }
+
+        this.initialized = true;
+      }
+
+      async createIdentity(alias, password) {
+        if (!this.initialized) {
+          throw new Error('IdP not initialized. Call init() first.');
+        }
+
+        // Use password-based key derivation if password is provided
+        if (password && password.length > 0) {
+          const seed = alias + ':' + password;
+          this.keys = await deriveKeysFromPassword(seed);
+        } else {
+          // Generate random keys
+          this.keys = await UnSEA.generateRandomPair();
+        }
+        
+        await UnSEA.saveKeys(alias, this.keys, password);
+
+        return this.keys;
+      }
+
+      async loadIdentity(alias, password) {
+        if (!this.initialized) {
+          throw new Error('IdP not initialized. Call init() first.');
+        }
+
+        // Try loading from IndexedDB first
+        console.log('🔍 Attempting to load keys from storage for:', alias);
+        
+        try {
+          this.keys = await UnSEA.loadKeys(alias, password);
+          console.log('📦 Keys loaded from storage:', this.keys ? 'SUCCESS' : 'NOT FOUND');
+        } catch (error) {
+          console.log('❌ Error loading from storage:', error.message);
+          this.keys = null;
+        }
+        
+        if (!this.keys && password && password.length > 0) {
+          // Not found in storage, derive from password instead
+          console.log('🔑 Keys not found in storage, deriving from password...');
+          const seed = alias + ':' + password;
+          this.keys = await deriveKeysFromPassword(seed);
+          
+          // Save for future use
+          await UnSEA.saveKeys(alias, this.keys, password);
+          console.log('💾 Derived keys saved to storage');
+        }
+        
+        if (!this.keys) {
+          throw new Error('Identity not found or incorrect password');
+        }
+
+        return this.keys;
+      }
+
+      async retrieveIdentityFromDHT(username) {
+        if (!this.initialized) {
+          throw new Error('IdP not initialized. Call init() first.');
+        }
+
+        const key = `identity:${username}`;
+        console.log('Retrieving from DHT with key:', key);
+        console.log('Connected peers:', this.mesh.getConnectedPeerCount());
+        
+        // Retrieve public identity data from DHT
+        const identityData = await this.webDHT.get(key);
+        console.log('Retrieved data:', identityData);
+        
+        if (!identityData) {
+          throw new Error('Identity not found in DHT. Make sure the identity was registered and peers are connected.');
+        }
+
+        // Verify the signature
+        const dataToVerify = JSON.stringify({
+          username: identityData.username,
+          displayName: identityData.displayName,
+          timestamp: identityData.timestamp,
+          publicKey: identityData.publicKey,
+          createdAt: identityData.createdAt
+        });
+        
+        const valid = await UnSEA.verifyMessage(dataToVerify, identityData.signature, identityData.publicKey);
+        
+        if (!valid) {
+          throw new Error('Identity signature verification failed');
+        }
+
+        return identityData;
+      }
+
+      async registerIdentity(profile) {
+        if (!this.initialized) {
+          throw new Error('IdP not initialized. Call init() first.');
+        }
+
+        if (!this.keys) {
+          throw new Error('No identity loaded. Create or load an identity first.');
+        }
+
+        const identityData = {
+          ...profile,
+          publicKey: this.keys.pub,
+          createdAt: Date.now()
+        };
+
+        const signature = await UnSEA.signMessage(JSON.stringify(identityData), this.keys.priv);
+        identityData.signature = signature;
+
+        const key = `identity:${profile.username}`;
+        console.log('Registering to DHT with key:', key);
+        console.log('Identity data:', identityData);
+        
+        await this.webDHT.put(key, identityData);
+
+        return identityData;
+      }
+
+      async generateAuthToken(claims, expiresIn = 3600) {
+        if (!this.keys) {
+          throw new Error('No identity loaded. Create or load an identity first.');
+        }
+
+        const token = {
+          claims: {
+            ...claims,
+            iat: Math.floor(Date.now() / 1000),
+            exp: Math.floor(Date.now() / 1000) + expiresIn
+          },
+          publicKey: this.keys.pub
+        };
+
+        const signature = await UnSEA.signMessage(JSON.stringify(token.claims), this.keys.priv);
+        token.signature = signature;
+
+        return token;
+      }
+
+      async verifyAuthToken(token) {
+        try {
+          const valid = await UnSEA.verifyMessage(JSON.stringify(token.claims), token.signature, token.publicKey);
+          
+          if (!valid) {
+            return { valid: false, error: 'Invalid signature' };
+          }
+
+          const now = Math.floor(Date.now() / 1000);
+          if (token.claims.exp && token.claims.exp < now) {
+            return { valid: false, error: 'Token expired' };
+          }
+
+          return { valid: true, claims: token.claims };
+        } catch (error) {
+          return { valid: false, error: error.message };
+        }
+      }
+
+      async sign(message) {
+        if (!this.keys) {
+          throw new Error('No identity loaded. Create or load an identity first.');
+        }
+
+        return await UnSEA.signMessage(message, this.keys.priv);
+      }
+
+      async verify(message, signature, publicKey) {
+        return await UnSEA.verifyMessage(message, signature, publicKey);
+      }
+
+      async encrypt(message) {
+        if (!this.keys) {
+          throw new Error('No identity loaded. Create or load an identity first.');
+        }
+
+        // Encrypt to ourselves (use our own keys as recipient)
+        return await UnSEA.encryptMessageWithMeta(message, this.keys);
+      }
+
+      async decrypt(encrypted) {
+        if (!this.keys) {
+          throw new Error('No identity loaded. Create or load an identity first.');
+        }
+
+        return await UnSEA.decryptMessageWithMeta(encrypted, this.keys.epriv);
+      }
+
+      getPublicKeys() {
+        if (!this.keys) {
+          throw new Error('No identity loaded. Create or load an identity first.');
+        }
+
+        return {
+          pub: this.keys.pub,
+          epub: this.keys.epub
+        };
+      }
+
+      async exportKeys() {
+        if (!this.keys) {
+          throw new Error('No identity loaded. Create or load an identity first.');
+        }
+
+        // Return the keys object directly (already in the correct format)
+        return this.keys;
+      }
+
+      async disconnect() {
+        if (this.mesh) {
+          await this.mesh.disconnect();
+        }
+        
+        this.initialized = false;
+      }
+    }
 
     // Global state
     let idp = null;
@@ -177,15 +561,31 @@
       }
     }
 
+    function updatePeerStatus(count) {
+      const peerStatus = document.getElementById('peerStatus');
+      peerStatus.textContent = `Connected Peers: ${count}`;
+      if (count > 0) {
+        peerStatus.className = 'status connected';
+      } else {
+        peerStatus.className = 'status disconnected';
+      }
+    }
+
     function enableButtons(enabled) {
+      document.getElementById('refreshBtn').disabled = !enabled;
       document.getElementById('createBtn').disabled = !enabled;
       document.getElementById('loadBtn').disabled = !enabled;
+      document.getElementById('clearBtn').disabled = !enabled;
+      document.getElementById('retrieveBtn').disabled = !enabled;
       document.getElementById('registerBtn').disabled = !enabled;
       document.getElementById('tokenBtn').disabled = !enabled;
       document.getElementById('verifyBtn').disabled = !enabled;
       document.getElementById('signBtn').disabled = !enabled;
+      document.getElementById('verifySignBtn').disabled = !enabled;
       document.getElementById('encryptBtn').disabled = !enabled;
+      document.getElementById('decryptBtn').disabled = !enabled;
       document.getElementById('exportBtn').disabled = !enabled;
+      document.getElementById('importBtn').disabled = !enabled;
       document.getElementById('disconnectBtn').disabled = !enabled;
     }
 
@@ -195,17 +595,96 @@
         log('Initializing PigeonIdP...', 'info');
         const namespace = document.getElementById('namespace').value;
         
-        idp = new PigeonIdP({
+        const config = {
           namespace: namespace,
-          signalingServers: ['wss://signal.peerpigeon.com']
-        });
+          signalingServers: ['ws://localhost:3000']
+        };
+        
+        log(`Config: ${JSON.stringify(config)}`, 'info');
+        
+        idp = new PigeonIdP(config);
 
         await idp.init();
+        
+        log(`Mesh options: ${JSON.stringify({
+          networkName: idp.mesh.networkName,
+          autoConnect: idp.mesh.connectionManager?.autoConnect,
+          autoDiscovery: idp.mesh.peerDiscovery?.autoDiscovery,
+          signalingServers: idp.mesh.signalingServers
+        })}`, 'info');
+        
+        // Update initial peer count
+        const initialPeerCount = idp.mesh.getConnectedPeerCount();
+        updatePeerStatus(initialPeerCount);
+        
+        // Listen for signaling events
+        idp.mesh.on('signalingConnected', () => {
+          log('✓ Connected to signaling server', 'success');
+        });
+        
+        idp.mesh.on('signalingDisconnected', () => {
+          log('⚠️ Disconnected from signaling server', 'error');
+        });
+        
+        idp.mesh.on('peerDiscovered', (data) => {
+          const peerId = data.peerId || data;
+          log(`🔍 Peer discovered: ${String(peerId).substring(0, 8)}...`, 'info');
+        });
+        
+        // Listen for peer connections
+        idp.mesh.on('peerConnected', (data) => {
+          const peerId = data.peerId || data;
+          const peerCount = idp.mesh.getConnectedPeerCount();
+          log(`🔗 Peer connected: ${String(peerId).substring(0, 8)}...`, 'success');
+          log(`Total connected peers: ${peerCount}`, 'info');
+          updatePeerStatus(peerCount);
+        });
+        
+        idp.mesh.on('peerDisconnected', (data) => {
+          const peerId = data.peerId || data;
+          const peerCount = idp.mesh.getConnectedPeerCount();
+          log(`🔌 Peer disconnected: ${String(peerId).substring(0, 8)}...`, 'info');
+          log(`Total connected peers: ${peerCount}`, 'info');
+          updatePeerStatus(peerCount);
+        });
+        
         log('✓ IdP initialized successfully', 'success');
+        log(`Peer ID: ${idp.mesh.peerId.substring(0, 16)}...`, 'info');
+        log(`Namespace: ${namespace}`, 'info');
+        log('Waiting for peer connections...', 'info');
+        
+        // Check signaling connection status
+        if (idp.mesh.signalingClient && idp.mesh.signalingClient.isConnected) {
+          log('✓ Signaling server connected', 'success');
+        } else {
+          log('⚠️ Signaling server not connected', 'error');
+        }
+        
+        log('🔍 Auto-discovery is enabled, waiting for peers...', 'info');
+        
         updateStatus(true);
         enableButtons(true);
       } catch (error) {
         log(`✗ Error initializing: ${error.message}`, 'error');
+        console.error(error);
+      }
+    };
+
+    // Refresh peers
+    window.refreshPeers = async function() {
+      try {
+        log('🔄 Checking peer status...', 'info');
+        const peerCount = idp.mesh.getConnectedPeerCount();
+        log(`Current connected peers: ${peerCount}`, 'info');
+        
+        // Log all discovered peers
+        if (idp.mesh.peerDiscovery && idp.mesh.peerDiscovery.discoveredPeers) {
+          log(`Discovered peers in registry: ${idp.mesh.peerDiscovery.discoveredPeers.size}`, 'info');
+        }
+        
+        updatePeerStatus(peerCount);
+      } catch (error) {
+        log(`✗ Error refreshing peers: ${error.message}`, 'error');
         console.error(error);
       }
     };
@@ -220,6 +699,7 @@
         const keys = await idp.createIdentity(alias, password);
         log('✓ Identity created successfully', 'success');
         log(`Public Key: ${keys.pub.substring(0, 50)}...`, 'info');
+        log('💡 To use this identity in another browser, click "Export Keys"', 'info');
       } catch (error) {
         log(`✗ Error creating identity: ${error.message}`, 'error');
         console.error(error);
@@ -242,18 +722,58 @@
       }
     };
 
+    // Retrieve identity from DHT
+    window.retrieveFromDHT = async function() {
+      try {
+        const alias = document.getElementById('alias').value;
+        
+        log(`Retrieving identity from DHT: ${alias}...`, 'info');
+        const identityData = await idp.retrieveIdentityFromDHT(alias);
+        log('✓ Identity retrieved from DHT', 'success');
+        log(`Username: ${identityData.username}`, 'info');
+        log(`Display Name: ${identityData.displayName}`, 'info');
+        log(`Public Key: ${identityData.publicKey.substring(0, 50)}...`, 'info');
+        log(`Created: ${new Date(identityData.createdAt).toLocaleString()}`, 'info');
+        log('Note: This is public info only. Use "Load Identity" with password to access private keys.', 'info');
+      } catch (error) {
+        log(`✗ Error retrieving from DHT: ${error.message}`, 'error');
+        console.error(error);
+      }
+    };
+
+    // Clear stored keys
+    window.clearStoredKeys = async function() {
+      try {
+        const alias = document.getElementById('alias').value;
+        
+        if (!confirm(`Are you sure you want to delete stored keys for "${alias}"? This cannot be undone!`)) {
+          return;
+        }
+        
+        log('Clearing stored keys...', 'info');
+        await UnSEA.clearKeys(alias);
+        log('✓ Stored keys cleared successfully', 'success');
+        log('💡 Use "Load Identity" with password to derive keys deterministically', 'info');
+      } catch (error) {
+        log(`✗ Error clearing keys: ${error.message}`, 'error');
+        console.error(error);
+      }
+    };
+
     // Register identity
     window.registerIdentity = async function() {
       try {
         const alias = document.getElementById('alias').value;
         
         log('Registering identity in DHT...', 'info');
-        await idp.registerIdentity({
+        const result = await idp.registerIdentity({
           username: alias,
           displayName: alias.toUpperCase(),
           timestamp: Date.now()
         });
         log('✓ Identity registered in DHT', 'success');
+        log(`Key: identity:${alias}`, 'info');
+        log('Wait 2-3 seconds for DHT to propagate before retrieving', 'info');
       } catch (error) {
         log(`✗ Error registering identity: ${error.message}`, 'error');
         console.error(error);
@@ -307,33 +827,82 @@
         log(`Signing message: "${message}"...`, 'info');
         const signature = await idp.sign(message);
         log('✓ Message signed successfully', 'success');
-        log(`Signature: ${signature.substring(0, 50)}...`, 'info');
+        log(`Signature: ${signature}`, 'info');
+        log('💡 Copy this signature to verify in another browser', 'info');
         
-        // Verify it
+        // Auto-populate signature input for easy testing
+        document.getElementById('signatureInput').value = signature;
+        
+        // Verify it locally
         const keys = idp.getPublicKeys();
         const valid = await idp.verify(message, signature, keys.pub);
-        log(`✓ Signature verification: ${valid}`, 'success');
+        log(`✓ Local signature verification: ${valid}`, 'success');
       } catch (error) {
         log(`✗ Error signing message: ${error.message}`, 'error');
         console.error(error);
       }
     };
 
+    // Verify signature from another user
+    window.verifySignature = async function() {
+      try {
+        const message = document.getElementById('message').value;
+        const signature = document.getElementById('signatureInput').value;
+        const publicKey = document.getElementById('publicKeyInput').value;
+        
+        if (!signature || !publicKey) {
+          log('⚠️ Please enter both signature and public key', 'error');
+          return;
+        }
+        
+        log(`Verifying signature...`, 'info');
+        log(`Message: "${message}"`, 'info');
+        log(`Public Key: ${publicKey.substring(0, 30)}...`, 'info');
+        
+        const valid = await idp.verify(message, signature, publicKey);
+        
+        if (valid) {
+          log('✅ Signature is VALID! Message was signed by this public key.', 'success');
+        } else {
+          log('❌ Signature is INVALID! Message was NOT signed by this public key.', 'error');
+        }
+      } catch (error) {
+        log(`✗ Error verifying signature: ${error.message}`, 'error');
+        console.error(error);
+      }
+    };
+
     // Encrypt message
+    let lastEncryptedMessage = null;
+    
     window.encryptMessage = async function() {
       try {
         const message = document.getElementById('message').value;
         
         log(`Encrypting message: "${message}"...`, 'info');
         const encrypted = await idp.encrypt(message);
+        lastEncryptedMessage = encrypted;
         log('✓ Message encrypted successfully', 'success');
         log(`Encrypted ciphertext: ${encrypted.ciphertext.substring(0, 50)}...`, 'info');
-        
-        // Decrypt it
-        const decrypted = await idp.decrypt(encrypted);
-        log(`✓ Decrypted message: "${decrypted}"`, 'success');
       } catch (error) {
         log(`✗ Error encrypting message: ${error.message}`, 'error');
+        console.error(error);
+      }
+    };
+
+    // Decrypt message
+    window.decryptMessage = async function() {
+      try {
+        if (!lastEncryptedMessage) {
+          log('✗ No encrypted message to decrypt. Encrypt a message first.', 'error');
+          return;
+        }
+        
+        log('Decrypting message...', 'info');
+        const decrypted = await idp.decrypt(lastEncryptedMessage);
+        log(`✓ Decrypted message: "${decrypted}"`, 'success');
+      } catch (error) {
+        log(`✗ Error decrypting message: ${error.message}`, 'error');
         console.error(error);
       }
     };
@@ -343,11 +912,47 @@
       try {
         log('Exporting keys to JWK format...', 'info');
         const keys = await idp.exportKeys();
+        const keysJson = JSON.stringify(keys, null, 2);
+        
+        // Copy to clipboard
+        await navigator.clipboard.writeText(keysJson);
+        
         log('✓ Keys exported successfully', 'success');
-        log('Check browser console for full export', 'info');
+        log('✓ Keys copied to clipboard!', 'success');
+        log('Paste these keys in another browser to import the same identity', 'info');
         console.log('Exported keys:', keys);
       } catch (error) {
         log(`✗ Error exporting keys: ${error.message}`, 'error');
+        console.error(error);
+      }
+    };
+
+    // Import keys
+    window.importKeys = async function() {
+      try {
+        const keysJson = prompt('Paste the exported keys JSON:');
+        if (!keysJson) {
+          log('✗ Import cancelled', 'error');
+          return;
+        }
+        
+        const keys = JSON.parse(keysJson);
+        const alias = document.getElementById('alias').value;
+        const password = document.getElementById('password').value;
+        
+        log(`Importing keys for ${alias}...`, 'info');
+        
+        // Save the imported keys
+        await UnSEA.saveKeys(alias, keys, password);
+        
+        // Load them into the current session
+        idp.keys = keys;
+        
+        log('✓ Keys imported successfully', 'success');
+        log(`Public Key: ${keys.pub.substring(0, 50)}...`, 'info');
+        log('You can now use this identity!', 'success');
+      } catch (error) {
+        log(`✗ Error importing keys: ${error.message}`, 'error');
         console.error(error);
       }
     };
