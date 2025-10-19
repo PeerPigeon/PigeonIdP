@@ -1,0 +1,375 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>PigeonIdP Browser Example</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      max-width: 800px;
+      margin: 50px auto;
+      padding: 20px;
+      background-color: #f5f5f5;
+    }
+    .container {
+      background: white;
+      padding: 30px;
+      border-radius: 8px;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    }
+    h1 {
+      color: #333;
+      border-bottom: 2px solid #4CAF50;
+      padding-bottom: 10px;
+    }
+    .section {
+      margin: 20px 0;
+      padding: 15px;
+      background: #f9f9f9;
+      border-left: 4px solid #4CAF50;
+    }
+    button {
+      background-color: #4CAF50;
+      color: white;
+      padding: 10px 20px;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      margin: 5px;
+      font-size: 14px;
+    }
+    button:hover {
+      background-color: #45a049;
+    }
+    button:disabled {
+      background-color: #cccccc;
+      cursor: not-allowed;
+    }
+    .log {
+      background: #1e1e1e;
+      color: #00ff00;
+      padding: 15px;
+      border-radius: 4px;
+      font-family: monospace;
+      font-size: 12px;
+      max-height: 400px;
+      overflow-y: auto;
+      margin-top: 20px;
+    }
+    .log-entry {
+      margin: 5px 0;
+      padding: 3px 0;
+    }
+    .log-entry.success { color: #00ff00; }
+    .log-entry.error { color: #ff4444; }
+    .log-entry.info { color: #4da6ff; }
+    input {
+      padding: 8px;
+      margin: 5px;
+      border: 1px solid #ddd;
+      border-radius: 4px;
+      width: 200px;
+    }
+    .status {
+      padding: 10px;
+      margin: 10px 0;
+      border-radius: 4px;
+      font-weight: bold;
+    }
+    .status.connected {
+      background: #d4edda;
+      color: #155724;
+      border: 1px solid #c3e6cb;
+    }
+    .status.disconnected {
+      background: #f8d7da;
+      color: #721c24;
+      border: 1px solid #f5c6cb;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>🕊️ PigeonIdP Browser Demo</h1>
+    
+    <div class="status disconnected" id="status">
+      Status: Not Connected
+    </div>
+
+    <div class="section">
+      <h2>Configuration</h2>
+      <label>
+        Namespace: 
+        <input type="text" id="namespace" value="demo-namespace" />
+      </label>
+      <label>
+        Alias: 
+        <input type="text" id="alias" value="demo-user" />
+      </label>
+      <label>
+        Password: 
+        <input type="password" id="password" value="demo-password-123" />
+      </label>
+    </div>
+
+    <div class="section">
+      <h2>Identity Management</h2>
+      <button onclick="initializeIdP()">Initialize IdP</button>
+      <button onclick="createIdentity()" id="createBtn" disabled>Create Identity</button>
+      <button onclick="loadIdentity()" id="loadBtn" disabled>Load Identity</button>
+      <button onclick="registerIdentity()" id="registerBtn" disabled>Register in DHT</button>
+    </div>
+
+    <div class="section">
+      <h2>Authentication</h2>
+      <button onclick="generateToken()" id="tokenBtn" disabled>Generate Auth Token</button>
+      <button onclick="verifyToken()" id="verifyBtn" disabled>Verify Token</button>
+    </div>
+
+    <div class="section">
+      <h2>Messaging</h2>
+      <label>
+        Message: 
+        <input type="text" id="message" value="Hello from browser!" />
+      </label>
+      <button onclick="signMessage()" id="signBtn" disabled>Sign Message</button>
+      <button onclick="encryptMessage()" id="encryptBtn" disabled>Encrypt Message</button>
+    </div>
+
+    <div class="section">
+      <h2>Export/Import</h2>
+      <button onclick="exportKeys()" id="exportBtn" disabled>Export Keys</button>
+      <button onclick="disconnect()" id="disconnectBtn" disabled>Disconnect</button>
+    </div>
+
+    <h2>Console Log</h2>
+    <div class="log" id="log"></div>
+  </div>
+
+  <script type="module">
+    // Import PigeonIdP from CDN (in production, bundle with your app)
+    // For local testing, you would build and serve this file
+    import { PigeonIdP } from '../index.js';
+
+    // Global state
+    let idp = null;
+    let currentToken = null;
+
+    // Logging
+    function log(message, type = 'info') {
+      const logDiv = document.getElementById('log');
+      const entry = document.createElement('div');
+      entry.className = `log-entry ${type}`;
+      entry.textContent = `[${new Date().toLocaleTimeString()}] ${message}`;
+      logDiv.appendChild(entry);
+      logDiv.scrollTop = logDiv.scrollHeight;
+    }
+
+    function updateStatus(connected) {
+      const status = document.getElementById('status');
+      if (connected) {
+        status.textContent = 'Status: Connected';
+        status.className = 'status connected';
+      } else {
+        status.textContent = 'Status: Not Connected';
+        status.className = 'status disconnected';
+      }
+    }
+
+    function enableButtons(enabled) {
+      document.getElementById('createBtn').disabled = !enabled;
+      document.getElementById('loadBtn').disabled = !enabled;
+      document.getElementById('registerBtn').disabled = !enabled;
+      document.getElementById('tokenBtn').disabled = !enabled;
+      document.getElementById('verifyBtn').disabled = !enabled;
+      document.getElementById('signBtn').disabled = !enabled;
+      document.getElementById('encryptBtn').disabled = !enabled;
+      document.getElementById('exportBtn').disabled = !enabled;
+      document.getElementById('disconnectBtn').disabled = !enabled;
+    }
+
+    // Initialize IdP
+    window.initializeIdP = async function() {
+      try {
+        log('Initializing PigeonIdP...', 'info');
+        const namespace = document.getElementById('namespace').value;
+        
+        idp = new PigeonIdP({
+          namespace: namespace,
+          signalingServers: ['wss://signal.peerpigeon.com']
+        });
+
+        await idp.init();
+        log('✓ IdP initialized successfully', 'success');
+        updateStatus(true);
+        enableButtons(true);
+      } catch (error) {
+        log(`✗ Error initializing: ${error.message}`, 'error');
+        console.error(error);
+      }
+    };
+
+    // Create identity
+    window.createIdentity = async function() {
+      try {
+        const alias = document.getElementById('alias').value;
+        const password = document.getElementById('password').value;
+        
+        log(`Creating identity with alias: ${alias}...`, 'info');
+        const keys = await idp.createIdentity(alias, password);
+        log('✓ Identity created successfully', 'success');
+        log(`Public Key: ${keys.pub.substring(0, 50)}...`, 'info');
+      } catch (error) {
+        log(`✗ Error creating identity: ${error.message}`, 'error');
+        console.error(error);
+      }
+    };
+
+    // Load identity
+    window.loadIdentity = async function() {
+      try {
+        const alias = document.getElementById('alias').value;
+        const password = document.getElementById('password').value;
+        
+        log(`Loading identity: ${alias}...`, 'info');
+        const keys = await idp.loadIdentity(alias, password);
+        log('✓ Identity loaded successfully', 'success');
+        log(`Public Key: ${keys.pub.substring(0, 50)}...`, 'info');
+      } catch (error) {
+        log(`✗ Error loading identity: ${error.message}`, 'error');
+        console.error(error);
+      }
+    };
+
+    // Register identity
+    window.registerIdentity = async function() {
+      try {
+        const alias = document.getElementById('alias').value;
+        
+        log('Registering identity in DHT...', 'info');
+        await idp.registerIdentity({
+          username: alias,
+          displayName: alias.toUpperCase(),
+          timestamp: Date.now()
+        });
+        log('✓ Identity registered in DHT', 'success');
+      } catch (error) {
+        log(`✗ Error registering identity: ${error.message}`, 'error');
+        console.error(error);
+      }
+    };
+
+    // Generate token
+    window.generateToken = async function() {
+      try {
+        log('Generating authentication token...', 'info');
+        currentToken = await idp.generateAuthToken({
+          username: document.getElementById('alias').value,
+          role: 'user'
+        }, 3600);
+        log('✓ Token generated successfully', 'success');
+        log(`Claims: ${JSON.stringify(currentToken.claims)}`, 'info');
+      } catch (error) {
+        log(`✗ Error generating token: ${error.message}`, 'error');
+        console.error(error);
+      }
+    };
+
+    // Verify token
+    window.verifyToken = async function() {
+      try {
+        if (!currentToken) {
+          log('✗ No token to verify. Generate one first.', 'error');
+          return;
+        }
+        
+        log('Verifying token...', 'info');
+        const result = await idp.verifyAuthToken(currentToken);
+        
+        if (result.valid) {
+          log('✓ Token is valid', 'success');
+          log(`Username: ${result.claims.username}`, 'info');
+        } else {
+          log(`✗ Token is invalid: ${result.error}`, 'error');
+        }
+      } catch (error) {
+        log(`✗ Error verifying token: ${error.message}`, 'error');
+        console.error(error);
+      }
+    };
+
+    // Sign message
+    window.signMessage = async function() {
+      try {
+        const message = document.getElementById('message').value;
+        
+        log(`Signing message: "${message}"...`, 'info');
+        const signature = await idp.sign(message);
+        log('✓ Message signed successfully', 'success');
+        log(`Signature: ${signature.substring(0, 50)}...`, 'info');
+        
+        // Verify it
+        const keys = idp.getPublicKeys();
+        const valid = await idp.verify(message, signature, keys.pub);
+        log(`✓ Signature verification: ${valid}`, 'success');
+      } catch (error) {
+        log(`✗ Error signing message: ${error.message}`, 'error');
+        console.error(error);
+      }
+    };
+
+    // Encrypt message
+    window.encryptMessage = async function() {
+      try {
+        const message = document.getElementById('message').value;
+        
+        log(`Encrypting message: "${message}"...`, 'info');
+        const encrypted = await idp.encrypt(message);
+        log('✓ Message encrypted successfully', 'success');
+        log(`Encrypted: ${encrypted.substring(0, 50)}...`, 'info');
+        
+        // Decrypt it
+        const decrypted = await idp.decrypt(encrypted);
+        log(`✓ Decrypted message: "${decrypted.message}"`, 'success');
+      } catch (error) {
+        log(`✗ Error encrypting message: ${error.message}`, 'error');
+        console.error(error);
+      }
+    };
+
+    // Export keys
+    window.exportKeys = async function() {
+      try {
+        log('Exporting keys to JWK format...', 'info');
+        const keys = await idp.exportKeys();
+        log('✓ Keys exported successfully', 'success');
+        log('Check browser console for full export', 'info');
+        console.log('Exported keys:', keys);
+      } catch (error) {
+        log(`✗ Error exporting keys: ${error.message}`, 'error');
+        console.error(error);
+      }
+    };
+
+    // Disconnect
+    window.disconnect = async function() {
+      try {
+        log('Disconnecting from mesh...', 'info');
+        await idp.disconnect();
+        log('✓ Disconnected successfully', 'success');
+        updateStatus(false);
+        enableButtons(false);
+        idp = null;
+      } catch (error) {
+        log(`✗ Error disconnecting: ${error.message}`, 'error');
+        console.error(error);
+      }
+    };
+
+    // Initial log message
+    log('PigeonIdP Browser Demo loaded', 'success');
+    log('Click "Initialize IdP" to begin', 'info');
+  </script>
+</body>
+</html>

@@ -1,0 +1,30 @@
+{
+  "name": "pigeonidp",
+  "version": "1.0.0",
+  "description": "P2P SAML identity provider using PeerPigeon WebDHT and UnSEA",
+  "main": "index.js",
+  "type": "module",
+  "scripts": {
+    "test": "node test/test.js"
+  },
+  "keywords": [
+    "p2p",
+    "identity",
+    "authentication",
+    "webdht",
+    "peerpigeon",
+    "idp",
+    "saml",
+    "unsea",
+    "decentralized"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "peerpigeon": "^1.0.4"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/PeerPigeon/PigeonIdP"
+  }
+}
