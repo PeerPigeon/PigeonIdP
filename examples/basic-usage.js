@@ -23,9 +23,9 @@ async function basicExample() {
   await idp.init();
   console.log('   ✓ IdP initialized\n');
 
-  // Create a new identity
+  // Create a new identity (without password in Node.js - browser can use password for encrypted storage)
   console.log('2. Creating new identity...');
-  const keys = await idp.createIdentity('alice', 'secure-password-123');
+  const keys = await idp.createIdentity('alice');
   console.log('   ✓ Identity created');
   console.log('   Public Key:', keys.pub.substring(0, 50) + '...\n');
 
@@ -77,12 +77,12 @@ async function basicExample() {
   const secretMessage = 'This is a secret message';
   const encrypted = await idp.encrypt(secretMessage);
   console.log('   ✓ Message encrypted');
-  console.log('   Encrypted:', encrypted.substring(0, 50) + '...\n');
+  console.log('   Encrypted ciphertext:', encrypted.ciphertext.substring(0, 50) + '...\n');
 
   console.log('10. Decrypting the message...');
   const decrypted = await idp.decrypt(encrypted);
   console.log('   ✓ Message decrypted');
-  console.log('   Decrypted:', decrypted.message, '\n');
+  console.log('   Decrypted:', decrypted, '\n');
 
   // Export keys
   console.log('11. Exporting keys to JWK format...');

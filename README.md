@@ -86,6 +86,8 @@ await idp.disconnect();
 
 See [examples/browser-example.html](examples/browser-example.html) for a full interactive demo.
 
+**Note on Password Storage**: The password parameter for `createIdentity()` enables encrypted key storage using IndexedDB, which is only available in browsers. In Node.js environments, omit the password parameter or keys will not be persisted. For server-side key persistence, implement your own storage solution using the `exportKeys()` and `importKeys()` methods.
+
 ## API Reference
 
 ### Constructor

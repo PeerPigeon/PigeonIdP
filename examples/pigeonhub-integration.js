@@ -21,9 +21,9 @@ async function pigeonHubExample() {
   await idp.init();
   console.log('   ✓ IdP initialized\n');
 
-  // Create identity for user
+  // Create identity for user (without password in Node.js)
   console.log('2. Creating user identity...');
-  const keys = await idp.createIdentity('bob', 'bobs-secure-password');
+  const keys = await idp.createIdentity('bob');
   console.log('   ✓ Identity created for Bob');
   console.log('   Public Key:', keys.pub.substring(0, 50) + '...\n');
 
@@ -60,7 +60,7 @@ async function pigeonHubExample() {
     signalingServers: ['wss://signal.peerpigeon.com']
   });
   await idp2.init();
-  const keys2 = await idp2.createIdentity('carol', 'carols-password');
+  const keys2 = await idp2.createIdentity('carol');
   await idp2.registerIdentity({
     username: 'carol',
     displayName: 'Carol Cryptographer',
@@ -96,7 +96,7 @@ async function pigeonHubExample() {
     signalingServers: ['wss://signal.peerpigeon.com']
   });
   await idp3.init();
-  await idp3.createIdentity('dave', 'daves-password');
+  await idp3.createIdentity('dave');
   console.log(`   ✓ Created identity in separate namespace: ${otherNamespace}\n`);
 
   // Cleanup
