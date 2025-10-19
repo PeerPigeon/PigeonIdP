@@ -1,0 +1,27 @@
+# Test files
+test/
+
+# Git files
+.git/
+.gitignore
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Documentation (keep README.md)
+docs/
+
+# CI/CD
+.github/
+
+# Temporary files
+tmp/
+temp/
+*.tmp
