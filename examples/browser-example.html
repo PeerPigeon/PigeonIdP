@@ -327,11 +327,11 @@
         log(`Encrypting message: "${message}"...`, 'info');
         const encrypted = await idp.encrypt(message);
         log('✓ Message encrypted successfully', 'success');
-        log(`Encrypted: ${encrypted.substring(0, 50)}...`, 'info');
+        log(`Encrypted ciphertext: ${encrypted.ciphertext.substring(0, 50)}...`, 'info');
         
         // Decrypt it
         const decrypted = await idp.decrypt(encrypted);
-        log(`✓ Decrypted message: "${decrypted.message}"`, 'success');
+        log(`✓ Decrypted message: "${decrypted}"`, 'success');
       } catch (error) {
         log(`✗ Error encrypting message: ${error.message}`, 'error');
         console.error(error);

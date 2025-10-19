@@ -79,14 +79,14 @@ async function pigeonHubExample() {
   const message = 'Hello Carol, welcome to the namespace!';
   const encrypted = await idp.encrypt(message, keys2);
   console.log('   ✓ Message encrypted');
-  console.log('   Encrypted:', encrypted.substring(0, 50) + '...\n');
+  console.log('   Encrypted ciphertext:', encrypted.ciphertext.substring(0, 50) + '...\n');
 
   // Carol decrypts the message
   console.log('9. Carol decrypting Bob\'s message...');
   const decrypted = await idp2.decrypt(encrypted);
   console.log('   ✓ Message decrypted');
-  console.log('   Message:', decrypted.message);
-  console.log('   From:', decrypted.sender.substring(0, 50) + '...\n');
+  console.log('   Message:', decrypted);
+  console.log('   From:', encrypted.sender.substring(0, 50) + '...\n');
 
   // Cross-namespace example
   console.log('10. Creating separate namespace...');

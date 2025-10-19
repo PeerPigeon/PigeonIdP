@@ -147,7 +147,11 @@ export class PigeonIdP {
    * Encrypt a message for a recipient
    * @param {string} message - Message to encrypt
    * @param {Object} recipientKeys - Recipient's public keys (optional, uses own keys if not provided)
-   * @returns {Promise<Object>} Encrypted message object with ciphertext, iv, sender, and timestamp
+   * @returns {Promise<Object>} Encrypted message object with properties:
+   *   - ciphertext: string - The encrypted message
+   *   - iv: string - Initialization vector
+   *   - sender: string - Sender's public key
+   *   - timestamp: number - Encryption timestamp
    */
   async encrypt(message, recipientKeys = null) {
     if (!this.keys) {
