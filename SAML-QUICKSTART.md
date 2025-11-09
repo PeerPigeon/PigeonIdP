@@ -28,18 +28,23 @@ cd PigeonIdP
 # Install dependencies
 npm install
 
+# IMPORTANT: Edit fly.toml and change the app name to something unique
+# app = "your-company-idp"  # Change this line
+
 # Deploy to Fly.io (no prompts!)
 npm run deploy
 ```
 
-Your IdP is now live at: **https://pigeonidp.fly.dev**
+Your IdP is now live at: **https://your-app-name.fly.dev**
+
+**Note**: Replace `your-app-name` with the actual app name you chose in `fly.toml`.
 
 ### 2. Get Metadata URL
 
-Share this with Service Providers:
+Share this with Service Providers (replace with your app name):
 
 ```
-https://pigeonidp.fly.dev/saml/metadata
+https://your-app-name.fly.dev/saml/metadata
 ```
 
 ### 3. Configure Service Provider

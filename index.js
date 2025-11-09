@@ -32,7 +32,7 @@ export class PigeonIdP {
    */
   constructor(options = {}) {
     this.namespace = options.namespace || 'default';
-    this.signalingServers = options.signalingServers || ['wss://signal.peerpigeon.com'];
+    this.signalingServers = options.signalingServers || ['wss://pigeonhub.fli.dev'];
     this.meshOptions = options.meshOptions || {};
     
     this.mesh = null;

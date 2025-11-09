@@ -4,6 +4,8 @@
 
 A decentralized identity provider (IdP) solution that works in browsers using PeerPigeon's WebDHT for storage and UnSEA for cryptographic operations. Built for integration with PigeonHub and supports custom namespaces.
 
+**Built with PeerPigeon 1.0.6** - Latest stable release with improved WebRTC mesh networking and DHT performance.
+
 ## Features
 
 - 🔐 **Decentralized Authentication** - No central authority required
@@ -34,7 +36,7 @@ import { PigeonIdP } from 'pigeonidp';
 // Create an IdP instance with custom namespace
 const idp = new PigeonIdP({
   namespace: 'my-app-namespace',
-  signalingServers: ['wss://signal.peerpigeon.com']
+  signalingServers: ['wss://pigeonhub.fli.dev']
 });
 
 // Initialize the IdP
@@ -131,15 +133,17 @@ const assertion = await saml.generateAssertion(
 ### Deploy as SAML IdP
 
 ```bash
-# Deploy to Fly.io
+# Deploy to Fly.io (no prompts)
 npm run deploy
 
 # Your IdP will be available at:
-# https://pigeonidp.fly.dev
+# https://your-app-name.fly.dev
 
 # SAML Metadata URL:
-# https://pigeonidp.fly.dev/saml/metadata
+# https://your-app-name.fly.dev/saml/metadata
 ```
+
+**Note**: Replace `your-app-name` with your chosen app name during deployment. The default name is `pigeonidp`, but you should use a unique name for your deployment (e.g., `mycompany-idp`).
 
 ### Compatible Service Providers
 
@@ -174,9 +178,13 @@ npm run deploy
 ./deploy.sh
 ```
 
-Your server will be available at: `https://pigeonidp.fly.dev`
+Your server will be available at: `https://your-app-name.fly.dev`
+
+**Important**: Before deploying, edit `fly.toml` and change the `app` name from `pigeonidp` to a unique name for your deployment (e.g., `mycompany-idp`, `acme-idp`). The app name must be globally unique across all Fly.io applications.
 
 ### Available Endpoints
+
+**Replace `your-app-name` with your actual Fly.io app name:**
 
 - `GET /health` - Health check
 - `GET /api/info` - Server information
@@ -207,7 +215,7 @@ new PigeonIdP(options)
 
 **Options:**
 - `namespace` (string, default: 'default') - Custom namespace for the IdP
-- `signalingServers` (array, default: ['wss://signal.peerpigeon.com']) - Signaling servers for WebRTC
+- `signalingServers` (array, default: ['wss://pigeonhub.fli.dev']) - Signaling servers for WebRTC (uses PeerPigeon 1.0.6)
 - `meshOptions` (object) - Additional options for PeerPigeonMesh
 
 ### Methods

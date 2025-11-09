@@ -1,7 +1,7 @@
 {
   "name": "pigeonidp",
-  "version": "0.0.1",
-  "description": "P2P SAML identity provider using PeerPigeon WebDHT and UnSEA",
+  "version": "1.0.0",
+  "description": "P2P SAML identity provider using PeerPigeon 1.0.6 WebDHT and UnSEA",
   "main": "index.js",
   "type": "module",
   "scripts": {

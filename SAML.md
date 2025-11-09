@@ -19,20 +19,22 @@ SAML is an XML-based standard for exchanging authentication and authorization da
 npm run deploy
 ```
 
-Your IdP will be available at: `https://pigeonidp.fly.dev`
+Your IdP will be available at: `https://your-app-name.fly.dev`
+
+**Important**: Edit `fly.toml` and change the `app` name to something unique for your deployment before running the deploy command.
 
 ### 2. Get IdP Metadata
 
-Share this URL with Service Providers:
+Share this URL with Service Providers (replace `your-app-name` with your actual app name):
 
 ```
-https://pigeonidp.fly.dev/saml/metadata
+https://your-app-name.fly.dev/saml/metadata
 ```
 
 Or download it:
 
 ```bash
-curl https://pigeonidp.fly.dev/saml/metadata > idp-metadata.xml
+curl https://your-app-name.fly.dev/saml/metadata > idp-metadata.xml
 ```
 
 ### 3. Configure Service Provider
@@ -40,9 +42,9 @@ curl https://pigeonidp.fly.dev/saml/metadata > idp-metadata.xml
 In your Service Provider (e.g., Salesforce, AWS):
 
 1. Upload the IdP metadata XML
-2. Or manually configure:
-   - **Entity ID**: `https://pigeonidp.fly.dev`
-   - **SSO URL**: `https://pigeonidp.fly.dev/saml/sso`
+2. Or manually configure (replace `your-app-name` with your actual app name):
+   - **Entity ID**: `https://your-app-name.fly.dev`
+   - **SSO URL**: `https://your-app-name.fly.dev/saml/sso`
    - **Binding**: HTTP-POST or HTTP-Redirect
    - **NameID Format**: Unspecified
 
@@ -68,8 +70,10 @@ Returns IdP metadata XML for SP configuration.
 
 **Example**:
 ```bash
-curl https://pigeonidp.fly.dev/saml/metadata
+curl https://your-app-name.fly.dev/saml/metadata
 ```
+
+Replace `your-app-name` with your actual Fly.io app name.
 
 ### Single Sign-On Endpoint
 

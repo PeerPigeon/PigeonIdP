@@ -12,9 +12,10 @@ async function pigeonHubExample() {
 
   // Create IdP instance for a specific PigeonHub namespace
   const hubNamespace = 'my-pigeon-hub';
+  // Initialize IdP
   const idp = new PigeonIdP({
-    namespace: hubNamespace,
-    signalingServers: ['wss://signal.peerpigeon.com']
+    namespace: 'user-namespace',
+    signalingServers: ['wss://pigeonhub.fli.dev']
   });
 
   console.log(`1. Initializing IdP for namespace: ${hubNamespace}...`);
@@ -57,7 +58,7 @@ async function pigeonHubExample() {
   console.log('6. Creating second user in same namespace...');
   const idp2 = new PigeonIdP({
     namespace: hubNamespace,
-    signalingServers: ['wss://signal.peerpigeon.com']
+    signalingServers: ['wss://pigeonhub.fli.dev']
   });
   await idp2.init();
   const keys2 = await idp2.createIdentity('carol');
@@ -93,7 +94,7 @@ async function pigeonHubExample() {
   const otherNamespace = 'another-hub';
   const idp3 = new PigeonIdP({
     namespace: otherNamespace,
-    signalingServers: ['wss://signal.peerpigeon.com']
+    signalingServers: ['wss://pigeonhub.fli.dev']
   });
   await idp3.init();
   await idp3.createIdentity('dave');

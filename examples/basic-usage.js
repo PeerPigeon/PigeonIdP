@@ -13,10 +13,10 @@ import { PigeonIdP } from '../index.js';
 async function basicExample() {
   console.log('=== PigeonIdP Basic Usage Example ===\n');
 
-  // Create IdP instance with custom namespace
+  // Create IdP with custom namespace
   const idp = new PigeonIdP({
-    namespace: 'my-custom-namespace',
-    signalingServers: ['wss://signal.peerpigeon.com']
+    namespace: 'example-namespace',
+    signalingServers: ['wss://pigeonhub.fli.dev']
   });
 
   console.log('1. Initializing IdP...');
