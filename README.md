@@ -15,6 +15,8 @@ A decentralized identity provider (IdP) solution that works in browsers using Pe
 - 📦 **NPM Module** - Easy to import and use in any project
 - 🔒 **Secure Key Storage** - Password-encrypted key storage in IndexedDB
 - ✅ **JWT-like Tokens** - Generate and verify authentication tokens
+- 🏢 **SAML 2.0 Support** - Full SAML IdP for enterprise SSO (Salesforce, AWS, Google, etc.)
+- 🚀 **Deploy to Fly.io** - One-command deployment with automated CI/CD
 
 ## Installation
 
@@ -87,6 +89,113 @@ await idp.disconnect();
 See [examples/browser-example.html](examples/browser-example.html) for a full interactive demo.
 
 **Note on Password Storage**: The password parameter for `createIdentity()` enables encrypted key storage using IndexedDB, which is only available in browsers. In Node.js environments, omit the password parameter or keys will not be persisted. For server-side key persistence, implement your own storage solution using the `exportKeys()` and `importKeys()` methods.
+
+## SAML 2.0 Identity Provider
+
+PigeonIdP includes full SAML 2.0 support for enterprise Single Sign-On integration.
+
+### Quick SAML Setup
+
+```javascript
+import { PigeonIdP } from 'pigeonidp';
+import { PigeonIdPSAML } from 'pigeonidp/saml';
+
+const idp = new PigeonIdP({ namespace: 'my-org' });
+await idp.init();
+await idp.createIdentity('admin');
+
+// Add SAML support
+const saml = new PigeonIdPSAML(idp, {
+  entityId: 'https://myidp.example.com',
+  ssoUrl: 'https://myidp.example.com/saml/sso',
+  organizationName: 'My Organization'
+});
+
+// Generate SAML assertion for user
+const user = {
+  id: 'alice@company.com',
+  username: 'alice',
+  attributes: {
+    email: 'alice@company.com',
+    roles: ['admin']
+  }
+};
+
+const assertion = await saml.generateAssertion(
+  user,
+  'https://sp.example.com/acs',
+  'https://sp.example.com'
+);
+```
+
+### Deploy as SAML IdP
+
+```bash
+# Deploy to Fly.io
+npm run deploy
+
+# Your IdP will be available at:
+# https://pigeonidp.fly.dev
+
+# SAML Metadata URL:
+# https://pigeonidp.fly.dev/saml/metadata
+```
+
+### Compatible Service Providers
+
+- ✅ Salesforce
+- ✅ Google Workspace  
+- ✅ AWS IAM
+- ✅ Azure AD
+- ✅ Okta
+- ✅ OneLogin
+- ✅ Most enterprise SaaS applications
+
+### Full SAML Documentation
+
+See **[SAML.md](SAML.md)** for complete guide including:
+- SAML configuration
+- Service provider setup
+- Attribute mapping
+- Testing and troubleshooting
+- Security best practices
+
+## Deployment
+
+Deploy PigeonIdP as a server with REST API and SAML endpoints.
+
+### Deploy to Fly.io
+
+```bash
+# One-command deployment (no prompts)
+npm run deploy
+
+# Or use the deployment script
+./deploy.sh
+```
+
+Your server will be available at: `https://pigeonidp.fly.dev`
+
+### Available Endpoints
+
+- `GET /health` - Health check
+- `GET /api/info` - Server information
+- `GET /api/identity/:alias` - Lookup identity from DHT
+- `POST /api/verify` - Verify a signature
+- `POST /api/verify-token` - Verify auth token
+- `GET /saml/metadata` - SAML IdP metadata
+- `GET /saml/sso` - SAML Single Sign-On
+- `POST /saml/sso` - SAML authentication
+
+### GitHub Actions CI/CD
+
+Automatic deployment on push to `main`:
+
+1. Get Fly.io token: `flyctl auth token`
+2. Add to GitHub secrets as `FLY_API_TOKEN`
+3. Push to main branch = auto-deploy
+
+See **[DEPLOYMENT.md](DEPLOYMENT.md)** for detailed deployment guide.
 
 ## API Reference
 
