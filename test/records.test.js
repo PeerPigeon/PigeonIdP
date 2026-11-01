@@ -211,3 +211,32 @@ test('a version 1 record held elsewhere is never adopted, and post-quantum owner
   const claim = await createAccountRecord({ alias: 'Lee', namespace: NS, keys: someone, password: 'x' });
   assert.deepEqual(await asker.handle({ action: 'idp-put', record: claim }), { ok: false, error: 'taken' });
 });
+
+test('a linked relay hands over its whole store, accounts not yet upgraded included', async () => {
+  const dir = await mkdtemp(path.join(os.tmpdir(), 'pigeonidp-sync-'));
+  const old = await generateRandomPair({ postQuantum: false });
+  const v1 = await createAccountRecord({ alias: 'Legacy', namespace: NS, keys: old, password: 'pw', legacy: true });
+  const owner = await generateRandomPair();
+  const v2 = await createAccountRecord({ alias: 'Modern', namespace: NS, keys: owner, password: 'pw' });
+  await writeFile(path.join(dir, 'identities.json'), JSON.stringify({ version: 1, records: [v1, v2] }));
+  const source = await createRelayIdentityStore({ dataDir: dir });
+  const events = [];
+  const target = await createRelayIdentityStore({ dataDir: await mkdtemp(path.join(os.tmpdir(), 'pigeonidp-sync-')), onEvent: (e) => events.push(e) });
+
+  assert.deepEqual(await target.importRecords(source.exportRecords(), { from: 'pro' }), { stored: 2, skipped: 0 });
+  assert.equal(target.size(), 2);
+  assert.match(events.at(-1), /pro: synced \(2 new/);
+  assert.deepEqual(await target.importRecords(source.exportRecords()), { stored: 0, skipped: 2 }, 'nothing twice');
+
+  // An upgraded account is still never downgraded by a sync.
+  const { record: upgraded } = await upgradeAccountRecord(v1, 'pw');
+  await target.handle({ action: 'idp-put', record: upgraded });
+  assert.deepEqual(await target.importRecords([v1]), { stored: 0, skipped: 1 });
+  assert.equal((await target.handle({ action: 'idp-get', namespace: NS, alias: 'legacy', from_relay: true })).record.v, 2);
+  // Forged or broken records are skipped.
+  assert.deepEqual(await target.importRecords([{ ...v2, alias: 'Other' }, null, 'x']), { stored: 0, skipped: 3 });
+  await target.flush();
+  // And what was synced is kept across a restart.
+  const again = await createRelayIdentityStore({ dataDir: path.dirname(target.file) });
+  assert.equal(again.size(), 2);
+});

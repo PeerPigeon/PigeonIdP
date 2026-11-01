@@ -22,6 +22,15 @@
  *   - a name not found here is asked of them, and kept here once found.
  * Requests that came from another relay carry from_relay: true and are
  * answered from this store alone, so nothing is passed along twice.
+ *
+ * Whole stores (exportRecords / importRecords): two relays that have proved
+ * who they are to each other (freertc's authenticated relay links) swap
+ * everything they hold, so a relay has every account before anyone asks,
+ * including ones made while it was away. From such a relay, accounts not yet
+ * upgraded to version 2 are taken too.
+ *
+ * onEvent(text) hears every exchange with another relay, failures included,
+ * for the relay's log.
  */
 
 import { readFile, writeFile, rename, mkdir } from 'node:fs/promises';
@@ -41,6 +50,7 @@ export async function createRelayIdentityStore({
   otherRelays = null,
   fetch: fetchImpl = (...args) => globalThis.fetch(...args),
   askTimeoutMs = ASK_TIMEOUT_MS,
+  onEvent = () => {},
 } = {}) {
   if (!dataDir) throw new Error('dataDir is required');
   const file = path.join(dataDir, FILE_NAME);
@@ -87,15 +97,31 @@ export async function createRelayIdentityStore({
     }
   }
 
+  const hostOf = (base) => { try { return new URL(base).host; } catch { return base; } };
+  const what = (body) => (body.action === 'idp-put' ? `send ${body.record?.alias}` : `ask for ${body.alias}`);
+
   async function ask(base, body) {
-    const response = await fetchImpl(`${base.replace(/\/$/, '')}${RELAY_IDP_PATH}`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ ...body, from_relay: true }),
-      signal: AbortSignal.timeout(askTimeoutMs),
-    });
-    const text = await response.text();
-    return response.ok ? JSON.parse(text) : null;
+    try {
+      const response = await fetchImpl(`${base.replace(/\/$/, '')}${RELAY_IDP_PATH}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ...body, from_relay: true }),
+        signal: AbortSignal.timeout(askTimeoutMs),
+      });
+      const text = await response.text();
+      if (!response.ok) {
+        onEvent(`${hostOf(base)}: could not ${what(body)} (answered ${response.status})`);
+        return null;
+      }
+      const answer = JSON.parse(text);
+      if (answer?.ok === false) onEvent(`${hostOf(base)}: ${what(body)}: ${answer.error}`);
+      else if (body.action === 'idp-put') onEvent(`${hostOf(base)}: sent ${body.record?.alias}${answer?.stored === false ? ' (it had it)' : ''}`);
+      else if (answer?.record) onEvent(`${hostOf(base)}: had ${body.alias}`);
+      return answer;
+    } catch (error) {
+      onEvent(`${hostOf(base)}: could not ${what(body)} (${error?.name === 'TimeoutError' ? 'no answer' : error?.message || error})`);
+      throw error;
+    }
   }
 
   /**
@@ -134,6 +160,33 @@ export async function createRelayIdentityStore({
     records.set(key, record);
     await save();
     return true;
+  }
+
+  /** Every record held, for a relay that has proved who it is. */
+  function exportRecords() {
+    return [...records.values()];
+  }
+
+  /**
+   * Take what a relay that has proved who it is holds: each record that
+   * verifies and is new here, or a newer version by the same keys. Accounts
+   * not yet upgraded are taken too (it is a known relay, not a stranger
+   * claiming to be one); an upgraded account is still never downgraded.
+   */
+  async function importRecords(incoming, { from = 'a linked relay' } = {}) {
+    let stored = 0;
+    let skipped = 0;
+    for (const record of Array.isArray(incoming) ? incoming : []) {
+      if (!await verifyAccountRecord(record)) { skipped++; continue; }
+      const key = keyOf(record.namespace, record.alias);
+      if (compareAccountRecords(records.get(key), record) !== 'accept') { skipped++; continue; }
+      if (!records.has(key) && records.size >= maxRecords) { skipped++; continue; }
+      records.set(key, record);
+      stored++;
+    }
+    if (stored) await save();
+    onEvent(`${from}: synced (${stored} new or newer, ${skipped} already here or refused)`);
+    return { stored, skipped };
   }
 
   function sendOn(record) {
@@ -192,6 +245,8 @@ export async function createRelayIdentityStore({
   return {
     file,
     handle,
+    exportRecords,
+    importRecords,
     size: () => records.size,
     /** Let pending writes finish (for a clean shutdown). */
     flush: async () => { await Promise.all([...sending]); await writing; },
