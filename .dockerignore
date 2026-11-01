@@ -1,5 +1,4 @@
-# Fly.io Ignore File
-# Files and directories to exclude from deployment
+# Files left out of the Docker image
 
 node_modules/
 .git/

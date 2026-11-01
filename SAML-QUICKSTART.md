@@ -18,7 +18,7 @@
 
 ## Quick Start Guide
 
-### 1. Deploy PigeonIdP
+### 1. Run PigeonIdP
 
 ```bash
 # Clone the repository
@@ -28,23 +28,18 @@ cd PigeonIdP
 # Install dependencies
 npm install
 
-# IMPORTANT: Edit fly.toml and change the app name to something unique
-# app = "your-company-idp"  # Change this line
-
-# Deploy to Fly.io (no prompts!)
-npm run deploy
+# Start it, naming the public HTTPS address it is served at
+IDP_ENTITY_ID=https://idp.example.com npm start
 ```
 
-Your IdP is now live at: **https://your-app-name.fly.dev**
-
-**Note**: Replace `your-app-name` with the actual app name you chose in `fly.toml`.
+Serve it over HTTPS at that address (`https://idp.example.com` stands for yours below).
 
 ### 2. Get Metadata URL
 
-Share this with Service Providers (replace with your app name):
+Share this with Service Providers:
 
 ```
-https://your-app-name.fly.dev/saml/metadata
+https://idp.example.com/saml/metadata
 ```
 
 ### 3. Configure Service Provider
@@ -53,7 +48,7 @@ Example for **Salesforce**:
 
 1. Setup → Single Sign-On Settings
 2. Click "New from Metadata File"
-3. Enter URL: `https://pigeonidp.fly.dev/saml/metadata`
+3. Enter URL: `https://idp.example.com/saml/metadata`
 4. Save
 
 Example for **AWS**:
@@ -95,8 +90,8 @@ await idp.init();
 await idp.createIdentity('admin');
 
 const saml = new PigeonIdPSAML(idp, {
-  entityId: 'https://pigeonidp.fly.dev',
-  ssoUrl: 'https://pigeonidp.fly.dev/saml/sso'
+  entityId: 'https://idp.example.com',
+  ssoUrl: 'https://idp.example.com/saml/sso'
 });
 
 // Create user with attributes
@@ -141,22 +136,16 @@ console.log(samlResponse);
 
 ### Environment Variables
 
-Edit `fly.toml` to customize:
-
-```toml
-[env]
-  NAMESPACE = "my-organization"
-  IDP_ENTITY_ID = "https://sso.mycompany.com"
-  IDP_SSO_URL = "https://sso.mycompany.com/saml/sso"
-  ORG_NAME = "My Company"
-  CONTACT_EMAIL = "it@mycompany.com"
-  ASSERTION_LIFETIME = "300"
-```
-
-Then redeploy:
+Set these when starting the server:
 
 ```bash
-npm run deploy
+NAMESPACE="my-organization" \
+IDP_ENTITY_ID="https://sso.mycompany.com" \
+IDP_SSO_URL="https://sso.mycompany.com/saml/sso" \
+ORG_NAME="My Company" \
+CONTACT_EMAIL="it@mycompany.com" \
+ASSERTION_LIFETIME="300" \
+npm start
 ```
 
 ## User Attributes
@@ -183,12 +172,12 @@ Service Providers map these to their user profiles.
 ## Common Service Providers
 
 ### Salesforce
-- Metadata URL: `https://pigeonidp.fly.dev/saml/metadata`
+- Metadata URL: `https://idp.example.com/saml/metadata`
 - NameID: Email address
 - Attribute Mapping: Standard SAML attributes
 
 ### Google Workspace
-- Sign-in URL: `https://pigeonidp.fly.dev/saml/sso`
+- Sign-in URL: `https://idp.example.com/saml/sso`
 - Certificate: From metadata
 - NameID: Email address
 
@@ -198,9 +187,9 @@ Service Providers map these to their user profiles.
 - Roles: Map to SAML attributes
 
 ### Azure AD
-- Identifier: `https://pigeonidp.fly.dev`
+- Identifier: `https://idp.example.com`
 - Reply URL: From metadata
-- Sign-on URL: `https://pigeonidp.fly.dev/saml/sso`
+- Sign-on URL: `https://idp.example.com/saml/sso`
 
 ## Testing
 
@@ -230,7 +219,7 @@ Install **SAML-tracer** to debug SAML messages in real-time.
 ## Security
 
 ✅ **All assertions are cryptographically signed** using UnSEA  
-✅ **HTTPS required** (provided by Fly.io)  
+✅ **HTTPS required** (serve it behind TLS)  
 ✅ **Time-limited assertions** (default: 5 minutes)  
 ✅ **Audience restrictions** (scoped to specific SPs)  
 ✅ **Signature verification** by Service Providers
@@ -252,17 +241,16 @@ Install **SAML-tracer** to debug SAML messages in real-time.
 
 ### View Logs
 
+The server logs to its standard output:
+
 ```bash
-npm run logs
-# or
-flyctl logs --app pigeonidp
+DEBUG=* npm start
 ```
 
 ## Documentation
 
 - **[README.md](README.md)** - Full API documentation
 - **[SAML.md](SAML.md)** - Complete SAML guide
-- **[DEPLOYMENT.md](DEPLOYMENT.md)** - Deployment instructions
 - **[examples/saml-example.js](examples/saml-example.js)** - Working code example
 
 ## What You Can Do
@@ -270,13 +258,11 @@ flyctl logs --app pigeonidp
 ✅ **Implement SSO** for your organization  
 ✅ **Integrate with enterprise apps** (Salesforce, AWS, Google, etc.)  
 ✅ **Centralize identity management** across services  
-✅ **Deploy in minutes** with one command  
 ✅ **Customize attributes** for each user  
-✅ **Run on free tier** (Fly.io free plan)  
 
 ## Next Steps
 
-1. **Deploy**: `npm run deploy`
+1. **Run**: `npm start`
 2. **Test**: Run examples and test with SAMLTest.id
 3. **Configure**: Add your first Service Provider
 4. **Customize**: Adjust attributes and settings

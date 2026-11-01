@@ -13,28 +13,26 @@ SAML is an XML-based standard for exchanging authentication and authorization da
 
 ## Quick Start
 
-### 1. Deploy PigeonIdP Server
+### 1. Run the PigeonIdP Server
 
 ```bash
-npm run deploy
+IDP_ENTITY_ID=https://idp.example.com npm start
 ```
 
-Your IdP will be available at: `https://your-app-name.fly.dev`
-
-**Important**: Edit `fly.toml` and change the `app` name to something unique for your deployment before running the deploy command.
+Serve it over HTTPS at that address (`https://idp.example.com` stands for yours throughout this guide).
 
 ### 2. Get IdP Metadata
 
-Share this URL with Service Providers (replace `your-app-name` with your actual app name):
+Share this URL with Service Providers:
 
 ```
-https://your-app-name.fly.dev/saml/metadata
+https://idp.example.com/saml/metadata
 ```
 
 Or download it:
 
 ```bash
-curl https://your-app-name.fly.dev/saml/metadata > idp-metadata.xml
+curl https://idp.example.com/saml/metadata > idp-metadata.xml
 ```
 
 ### 3. Configure Service Provider
@@ -42,9 +40,9 @@ curl https://your-app-name.fly.dev/saml/metadata > idp-metadata.xml
 In your Service Provider (e.g., Salesforce, AWS):
 
 1. Upload the IdP metadata XML
-2. Or manually configure (replace `your-app-name` with your actual app name):
-   - **Entity ID**: `https://your-app-name.fly.dev`
-   - **SSO URL**: `https://your-app-name.fly.dev/saml/sso`
+2. Or manually configure:
+   - **Entity ID**: `https://idp.example.com`
+   - **SSO URL**: `https://idp.example.com/saml/sso`
    - **Binding**: HTTP-POST or HTTP-Redirect
    - **NameID Format**: Unspecified
 
@@ -70,10 +68,9 @@ Returns IdP metadata XML for SP configuration.
 
 **Example**:
 ```bash
-curl https://your-app-name.fly.dev/saml/metadata
+curl https://idp.example.com/saml/metadata
 ```
 
-Replace `your-app-name` with your actual Fly.io app name.
 
 ### Single Sign-On Endpoint
 
@@ -157,7 +154,7 @@ console.log(metadata);
 ### Test Assertion Generation
 
 ```bash
-curl -X POST https://pigeonidp.fly.dev/saml/test/assertion \
+curl -X POST https://idp.example.com/saml/test/assertion \
   -H "Content-Type: application/json" \
   -d '{
     "user": {
@@ -189,7 +186,7 @@ Test your IdP with these tools:
 2. Click "New from Metadata File"
 3. Upload PigeonIdP metadata XML
 4. Configure:
-   - Entity ID: `https://pigeonidp.fly.dev`
+   - Entity ID: `https://idp.example.com`
    - Name ID Format: Unspecified
    - Identity Location: Subject
 
@@ -205,8 +202,8 @@ Test your IdP with these tools:
 
 1. Admin Console → Security → Authentication → SSO with third-party IdP
 2. Setup SSO:
-   - Sign-in page URL: `https://pigeonidp.fly.dev/saml/sso`
-   - Sign-out page URL: `https://pigeonidp.fly.dev/saml/logout`
+   - Sign-in page URL: `https://idp.example.com/saml/sso`
+   - Sign-out page URL: `https://idp.example.com/saml/logout`
    - Upload certificate from metadata
 3. Test with users
 
@@ -272,19 +269,19 @@ Assertions are scoped to specific Service Providers:
 
 ### HTTPS Required
 
-SAML requires HTTPS in production. Fly.io provides this automatically.
+SAML requires HTTPS in production: run the server behind a TLS-terminating proxy or load balancer.
 
 ## Environment Variables
 
-Configure SAML via environment variables in `fly.toml`:
+Configure SAML with environment variables when starting the server:
 
-```toml
-[env]
-  IDP_ENTITY_ID = "https://myidp.example.com"
-  IDP_SSO_URL = "https://myidp.example.com/saml/sso"
-  ORG_NAME = "My Organization"
-  CONTACT_EMAIL = "admin@example.com"
-  ASSERTION_LIFETIME = "300"
+```bash
+IDP_ENTITY_ID="https://myidp.example.com" \
+IDP_SSO_URL="https://myidp.example.com/saml/sso" \
+ORG_NAME="My Organization" \
+CONTACT_EMAIL="admin@example.com" \
+ASSERTION_LIFETIME="300" \
+npm start
 ```
 
 ## Example: Full SAML Flow
@@ -302,8 +299,8 @@ async function main() {
   
   // 2. Configure SAML
   const saml = new PigeonIdPSAML(idp, {
-    entityId: 'https://pigeonidp.fly.dev',
-    ssoUrl: 'https://pigeonidp.fly.dev/saml/sso'
+    entityId: 'https://idp.example.com',
+    ssoUrl: 'https://idp.example.com/saml/sso'
   });
   
   // 3. User authentication happens...
@@ -364,12 +361,6 @@ node examples/saml-example.js
 ### Enable Debug Logging
 
 ```bash
-flyctl logs --app pigeonidp
-```
-
-Or locally:
-
-```bash
 DEBUG=* node server.js
 ```
 
@@ -377,7 +368,6 @@ DEBUG=* node server.js
 
 - **SAML 2.0 Specification**: http://docs.oasis-open.org/security/saml/
 - **PigeonIdP Documentation**: README.md
-- **Deployment Guide**: DEPLOYMENT.md
 - **Example Code**: examples/saml-example.js
 
 ## Support
@@ -389,7 +379,7 @@ DEBUG=* node server.js
 ---
 
 **Next Steps**:
-1. Deploy your IdP: `npm run deploy`
+1. Run your IdP: `npm start`
 2. Test with SAMLTest.id
 3. Configure your first Service Provider
 4. Set up user authentication

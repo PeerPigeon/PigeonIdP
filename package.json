@@ -6,11 +6,7 @@
   "type": "module",
   "scripts": {
     "test": "node test/test.js",
-    "start": "node server.js",
-    "deploy": "flyctl deploy --yes --ha=false",
-    "deploy:ha": "flyctl deploy --yes",
-    "logs": "flyctl logs",
-    "status": "flyctl status"
+    "start": "node server.js"
   },
   "keywords": [
     "p2p",

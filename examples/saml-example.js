@@ -28,8 +28,8 @@ async function samlExample() {
   // 3. Setup SAML extension
   console.log('3. Setting up SAML...');
   const saml = new PigeonIdPSAML(idp, {
-    entityId: 'https://pigeonidp.fly.dev',
-    ssoUrl: 'https://pigeonidp.fly.dev/saml/sso',
+    entityId: 'https://idp.example.com',
+    ssoUrl: 'https://idp.example.com/saml/sso',
     organizationName: 'PigeonIdP',
     contactEmail: 'admin@pigeonidp.example.com',
     assertionLifetime: 300 // 5 minutes
@@ -84,7 +84,7 @@ async function samlExample() {
 In a real SAML SSO flow:
 
 1. Service Provider redirects user to IdP with AuthnRequest
-   → GET https://pigeonidp.fly.dev/saml/sso?SAMLRequest=...
+   → GET https://idp.example.com/saml/sso?SAMLRequest=...
 
 2. User authenticates with PigeonIdP
 
@@ -112,7 +112,7 @@ Service Providers that support SAML 2.0:
   console.log('✓ Done!\n');
 
   console.log('=== Next Steps ===');
-  console.log('1. Deploy your IdP: npm run deploy');
+  console.log('1. Run your IdP: npm start');
   console.log('2. Share metadata with Service Providers');
   console.log('3. Configure SSO endpoints');
   console.log('4. Test with a SAML Service Provider');

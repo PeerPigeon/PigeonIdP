@@ -18,7 +18,6 @@ A decentralized identity provider (IdP) solution that works in browsers using Pe
 - 🔒 **Secure Key Storage** - Password-encrypted key storage in IndexedDB
 - ✅ **JWT-like Tokens** - Generate and verify authentication tokens
 - 🏢 **SAML 2.0 Support** - Full SAML IdP for enterprise SSO (Salesforce, AWS, Google, etc.)
-- 🚀 **Deploy to Fly.io** - One-command deployment with automated CI/CD
 
 ## Installation
 
@@ -133,17 +132,13 @@ const assertion = await saml.generateAssertion(
 ### Deploy as SAML IdP
 
 ```bash
-# Deploy to Fly.io (no prompts)
-npm run deploy
-
-# Your IdP will be available at:
-# https://your-app-name.fly.dev
+IDP_ENTITY_ID=https://idp.example.com npm start
 
 # SAML Metadata URL:
-# https://your-app-name.fly.dev/saml/metadata
+# https://idp.example.com/saml/metadata
 ```
 
-**Note**: Replace `your-app-name` with your chosen app name during deployment. The default name is `pigeonidp`, but you should use a unique name for your deployment (e.g., `mycompany-idp`).
+Run it behind HTTPS at the address you set as `IDP_ENTITY_ID`.
 
 ### Compatible Service Providers
 
@@ -168,23 +163,21 @@ See **[SAML.md](SAML.md)** for complete guide including:
 
 Deploy PigeonIdP as a server with REST API and SAML endpoints.
 
-### Deploy to Fly.io
+### Run the server
 
 ```bash
-# One-command deployment (no prompts)
-npm run deploy
-
-# Or use the deployment script
-./deploy.sh
+npm install
+IDP_ENTITY_ID=https://idp.example.com PORT=3000 npm start
 ```
 
-Your server will be available at: `https://your-app-name.fly.dev`
+Or as a container, with the included Dockerfile:
 
-**Important**: Before deploying, edit `fly.toml` and change the `app` name from `pigeonidp` to a unique name for your deployment (e.g., `mycompany-idp`, `acme-idp`). The app name must be globally unique across all Fly.io applications.
+```bash
+docker build -t pigeonidp .
+docker run -p 3000:3000 -e IDP_ENTITY_ID=https://idp.example.com pigeonidp
+```
 
 ### Available Endpoints
-
-**Replace `your-app-name` with your actual Fly.io app name:**
 
 - `GET /health` - Health check
 - `GET /api/info` - Server information
@@ -194,16 +187,6 @@ Your server will be available at: `https://your-app-name.fly.dev`
 - `GET /saml/metadata` - SAML IdP metadata
 - `GET /saml/sso` - SAML Single Sign-On
 - `POST /saml/sso` - SAML authentication
-
-### GitHub Actions CI/CD
-
-Automatic deployment on push to `main`:
-
-1. Get Fly.io token: `flyctl auth token`
-2. Add to GitHub secrets as `FLY_API_TOKEN`
-3. Push to main branch = auto-deploy
-
-See **[DEPLOYMENT.md](DEPLOYMENT.md)** for detailed deployment guide.
 
 ## API Reference
 

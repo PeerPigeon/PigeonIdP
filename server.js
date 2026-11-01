@@ -16,7 +16,8 @@ const NAMESPACE = process.env.NAMESPACE || 'pigeonidp-server';
 const SIGNALING_SERVERS = process.env.SIGNALING_SERVERS 
   ? process.env.SIGNALING_SERVERS.split(',')
   : ['wss://pigeonhub.fli.dev'];
-const IDP_ENTITY_ID = process.env.IDP_ENTITY_ID || `https://${NAMESPACE}.fly.dev`;
+// Set IDP_ENTITY_ID to the public HTTPS address the server is reached at.
+const IDP_ENTITY_ID = process.env.IDP_ENTITY_ID || `http://localhost:${PORT}`;
 const IDP_SSO_URL = process.env.IDP_SSO_URL || `${IDP_ENTITY_ID}/saml/sso`;
 
 // Middleware
