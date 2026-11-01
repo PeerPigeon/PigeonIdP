@@ -5,7 +5,7 @@
   "main": "index.js",
   "type": "module",
   "scripts": {
-    "test": "node test/test.js",
+    "test": "node --test test/records.test.js && node test/test.js",
     "start": "node server.js"
   },
   "keywords": [
@@ -22,12 +22,42 @@
   "author": "",
   "license": "MIT",
   "dependencies": {
-    "peerpigeon": "^1.0.6",
-    "express": "^4.18.2",
-    "cors": "^2.8.5"
+    "unsea": "https://codeload.github.com/draeder/unsea/tar.gz/5425b41d39cea5aa2116241af0fed82865ffea29"
   },
   "repository": {
     "type": "git",
     "url": "https://github.com/PeerPigeon/PigeonIdP"
+  },
+  "exports": {
+    ".": "./index.js",
+    "./records": "./records.js",
+    "./relay": "./relay.js",
+    "./saml": "./saml.js",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "index.js",
+    "records.js",
+    "relay.js",
+    "saml.js",
+    "server.js",
+    "README.md",
+    "LICENSE"
+  ],
+  "peerDependencies": {
+    "peerpigeon": "*",
+    "express": "^4.18.2",
+    "cors": "^2.8.5"
+  },
+  "peerDependenciesMeta": {
+    "peerpigeon": {
+      "optional": true
+    },
+    "express": {
+      "optional": true
+    },
+    "cors": {
+      "optional": true
+    }
   }
 }

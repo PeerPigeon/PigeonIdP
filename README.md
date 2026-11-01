@@ -91,6 +91,37 @@ See [examples/browser-example.html](examples/browser-example.html) for a full in
 
 **Note on Password Storage**: The password parameter for `createIdentity()` enables encrypted key storage using IndexedDB, which is only available in browsers. In Node.js environments, omit the password parameter or keys will not be persisted. For server-side key persistence, implement your own storage solution using the `exportKeys()` and `importKeys()` methods.
 
+## Accounts on relays
+
+A freertc node relay is a PigeonIdP server for the browsers connected to it
+(on by default; `FREERTC_IDP=off` turns it off). It keeps signed account
+records in `identities.json` in its data folder, so accounts survive restarts
+and can be logged into from a new device even when none of the owner's other
+devices is online.
+
+```javascript
+import { createAccountRecord, openAccountRecord, updateAccountRecord, verifyAccountRecord } from 'pigeonidp/records';
+
+// Register: the record carries the private keys encrypted with the password,
+// and is signed with the account's own key.
+const record = await createAccountRecord({ alias: 'alice', namespace: 'my-app', keys, password });
+
+// Log in on another device: fetch the record, then open it.
+const keys = await openAccountRecord(record, password); // throws on a wrong password
+```
+
+A relay stores the first record for a name and afterwards only a newer one
+signed by the same key (`'taken'` otherwise), so a name cannot be taken over by
+registering it again. It never sees a password or an unencrypted key. The store
+itself is `pigeonidp/relay`:
+
+```javascript
+import { createRelayIdentityStore } from 'pigeonidp/relay';
+const store = await createRelayIdentityStore({ dataDir: '.freertc-relay' });
+await store.handle({ action: 'idp-put', record });            // { ok: true, stored: true }
+await store.handle({ action: 'idp-get', namespace, alias });  // { ok: true, record }
+```
+
 ## SAML 2.0 Identity Provider
 
 PigeonIdP includes full SAML 2.0 support for enterprise Single Sign-On integration.
