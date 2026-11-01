@@ -122,6 +122,24 @@ await store.handle({ action: 'idp-put', record });            // { ok: true, sto
 await store.handle({ action: 'idp-get', namespace, alias });  // { ok: true, record }
 ```
 
+### Post-quantum accounts (version 2 records)
+
+Records are version 2: the account's key pair (unsea 3) carries ML-DSA-65 and
+ML-KEM-768 keys next to its P-256 ones, the record is signed with both
+(a hybrid signature), and the keys inside are sealed with Argon2id. A quantum
+computer that breaks P-256 cannot forge or take over such an account.
+
+- Version 1 records (P-256 only, PBKDF2) still verify and open.
+  `upgradeAccountRecord(record, password)` turns one into a version 2 record
+  with the same `pub`, signed by both keys; publish it and keep the returned
+  keys. Do it at login, while P-256 is still unbroken.
+- Once a name has a version 2 record, a relay only replaces it with a
+  version 2 record carrying the same `qpub` (`'taken'` otherwise), so it can
+  be neither downgraded nor handed to another post-quantum key.
+- Relays take new names only as version 2 records (`'upgrade'` otherwise).
+- Local relays share accounts with the other local relays they federate with
+  (`otherRelays`, over their `POST /api/v1/idp`).
+
 ## SAML 2.0 Identity Provider
 
 PigeonIdP includes full SAML 2.0 support for enterprise Single Sign-On integration.

@@ -5,10 +5,13 @@ import os from 'node:os';
 import path from 'node:path';
 import { generateRandomPair } from 'unsea';
 
+import { upgradePair } from 'unsea';
 import {
   createAccountRecord,
+  isPostQuantumRecord,
   openAccountRecord,
   updateAccountRecord,
+  upgradeAccountRecord,
   verifyAccountRecord,
 } from '../records.js';
 import { createRelayIdentityStore } from '../relay.js';
@@ -111,4 +114,58 @@ test('a name new here is checked with the other relays before it is taken here',
   const stolen = await createAccountRecord({ alias: 'Eve', namespace: NS, keys: thief, password: 'x' });
   assert.deepEqual(await b.store.handle({ action: 'idp-put', record: stolen }), { ok: false, error: 'taken' });
   assert.equal((await b.store.handle({ action: 'idp-get', namespace: NS, alias: 'eve', from_relay: true })).record.pub, owner.pub);
+});
+
+test('new records are post-quantum: hybrid signed, Argon2id sealed', async () => {
+  const keys = await generateRandomPair();
+  const record = await createAccountRecord({ alias: 'Quinn', namespace: NS, keys, password: 'pw' });
+  assert.equal(isPostQuantumRecord(record), true);
+  assert.equal(record.keys.kdf, 'argon2id');
+  assert.ok(record.sig.startsWith('pq1.'));
+  assert.ok(JSON.stringify(record).length < 16 * 1024, `record is ${JSON.stringify(record).length} bytes`);
+  assert.equal(await verifyAccountRecord(record), true);
+  const opened = await openAccountRecord(record, 'pw');
+  assert.equal(opened.qpub, keys.qpub);
+  assert.equal(await verifyAccountRecord({ ...record, qpub: (await generateRandomPair()).qpub }), false, 'another qpub');
+  const { qpub: _q, ...noQpub } = record;
+  assert.equal(await verifyAccountRecord({ ...noQpub, v: 1 }), false, 'cannot pass as version 1');
+});
+
+test('a version 1 account upgrades in place and cannot be downgraded after', async () => {
+  const dataDir = await mkdtemp(path.join(os.tmpdir(), 'pigeonidp-pq-'));
+  const store = await createRelayIdentityStore({ dataDir });
+  const old = await generateRandomPair({ postQuantum: false });
+  const v1 = await createAccountRecord({ alias: 'Old', namespace: NS, keys: old, password: 'pw', legacy: true });
+  assert.equal(v1.v, 1);
+  assert.equal(await verifyAccountRecord(v1), true);
+  // A relay that already kept it (from before) still has it: put it there as another relay would.
+  assert.deepEqual(await store.handle({ action: 'idp-put', record: v1, from_relay: true }), { ok: true, stored: true });
+
+  const { keys, record: v2 } = await upgradeAccountRecord(v1, 'pw');
+  assert.equal(keys.pub, old.pub, 'same identity');
+  assert.equal(v2.v, 2);
+  assert.equal(v2.seq, 2);
+  assert.deepEqual(await store.handle({ action: 'idp-put', record: v2 }), { ok: true, stored: true });
+
+  // Downgrade: a newer version 1 record signed by the P-256 key alone.
+  const downgrade = await createAccountRecord({ alias: 'Old', namespace: NS, keys: old, password: 'x', legacy: true, now: Date.now() + 1000 });
+  assert.deepEqual(await store.handle({ action: 'idp-put', record: { ...downgrade } }), { ok: false, error: 'taken' });
+  // Another post-quantum key with the same P-256 key (what a quantum attacker who broke it could sign).
+  const hijack = upgradePair(old);
+  const swapped = await updateAccountRecord({ ...v1, seq: 5 }, { keys: hijack, password: 'x' });
+  assert.equal(await verifyAccountRecord(swapped), true);
+  assert.deepEqual(await store.handle({ action: 'idp-put', record: swapped }), { ok: false, error: 'taken' });
+  // The owner's own next version is fine.
+  const next = await updateAccountRecord(v2, { keys, password: 'pw-2' });
+  assert.deepEqual(await store.handle({ action: 'idp-put', record: next }), { ok: true, stored: true });
+  assert.equal((await openAccountRecord(next, 'pw-2')).qpub, keys.qpub);
+});
+
+test('a relay takes new names only as post-quantum records', async () => {
+  const store = await createRelayIdentityStore({ dataDir: await mkdtemp(path.join(os.tmpdir(), 'pigeonidp-pq-')) });
+  const old = await generateRandomPair({ postQuantum: false });
+  const v1 = await createAccountRecord({ alias: 'New', namespace: NS, keys: old, password: 'pw', legacy: true });
+  assert.deepEqual(await store.handle({ action: 'idp-put', record: v1 }), { ok: false, error: 'upgrade' });
+  const { record } = await upgradeAccountRecord(v1, 'pw');
+  assert.deepEqual(await store.handle({ action: 'idp-put', record }), { ok: true, stored: true });
 });

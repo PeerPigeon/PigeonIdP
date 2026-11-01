@@ -26,7 +26,7 @@
 
 import { readFile, writeFile, rename, mkdir } from 'node:fs/promises';
 import path from 'node:path';
-import { aliasKey, compareAccountRecords, verifyAccountRecord } from './records.js';
+import { aliasKey, compareAccountRecords, isPostQuantumRecord, verifyAccountRecord } from './records.js';
 
 const FILE_NAME = 'identities.json';
 const DEFAULT_MAX_RECORDS = 50_000;
@@ -154,6 +154,9 @@ export async function createRelayIdentityStore({
         const verdict = compareAccountRecords(records.get(key), record);
         if (verdict === 'taken') return { ok: false, error: 'taken' };
         if (verdict === 'stale') return { ok: true, stored: false };
+        // New names are post-quantum from the start; version 1 records are
+        // only kept for accounts that already existed (until they upgrade).
+        if (!records.has(key) && !isPostQuantumRecord(record) && !fromRelay) return { ok: false, error: 'upgrade' };
         if (!records.has(key) && records.size >= maxRecords) return { ok: false, error: 'full' };
         records.set(key, record);
         await save();
