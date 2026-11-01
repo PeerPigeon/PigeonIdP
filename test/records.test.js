@@ -1,15 +1,16 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { mkdtemp } from 'node:fs/promises';
+import { mkdtemp, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { generateRandomPair } from 'unsea';
 
-import { upgradePair } from 'unsea';
+import { signMessage, upgradePair } from 'unsea';
 import {
   createAccountRecord,
   isPostQuantumRecord,
   openAccountRecord,
+  signedText,
   updateAccountRecord,
   upgradeAccountRecord,
   verifyAccountRecord,
@@ -133,13 +134,14 @@ test('new records are post-quantum: hybrid signed, Argon2id sealed', async () =>
 
 test('a version 1 account upgrades in place and cannot be downgraded after', async () => {
   const dataDir = await mkdtemp(path.join(os.tmpdir(), 'pigeonidp-pq-'));
-  const store = await createRelayIdentityStore({ dataDir });
   const old = await generateRandomPair({ postQuantum: false });
   const v1 = await createAccountRecord({ alias: 'Old', namespace: NS, keys: old, password: 'pw', legacy: true });
   assert.equal(v1.v, 1);
   assert.equal(await verifyAccountRecord(v1), true);
-  // A relay that already kept it (from before) still has it: put it there as another relay would.
-  assert.deepEqual(await store.handle({ action: 'idp-put', record: v1, from_relay: true }), { ok: true, stored: true });
+  // A relay that kept it from before post-quantum records.
+  await writeFile(path.join(dataDir, 'identities.json'), JSON.stringify({ version: 1, records: [v1] }));
+  const store = await createRelayIdentityStore({ dataDir });
+  assert.equal(store.size(), 1);
 
   const { keys, record: v2 } = await upgradeAccountRecord(v1, 'pw');
   assert.equal(keys.pub, old.pub, 'same identity');
@@ -168,4 +170,44 @@ test('a relay takes new names only as post-quantum records', async () => {
   assert.deepEqual(await store.handle({ action: 'idp-put', record: v1 }), { ok: false, error: 'upgrade' });
   const { record } = await upgradeAccountRecord(v1, 'pw');
   assert.deepEqual(await store.handle({ action: 'idp-put', record }), { ok: true, stored: true });
+});
+
+test('relays never take a version 1 record from another relay, whoever claims to be one', async () => {
+  const [a, b, c] = await federatedStores(3);
+  const owner = await generateRandomPair();
+  const v2 = await createAccountRecord({ alias: 'Pat', namespace: NS, keys: owner, password: 'pw' });
+  b.up = false;
+  c.up = false;
+  assert.deepEqual(await a.store.handle({ action: 'idp-put', record: v2 }), { ok: true, stored: true });
+  await a.store.flush();
+  // A version 1 record with the owner's pub (what a forger of P-256 could
+  // make), with a huge seq, sent to b as if from a relay: refused.
+  const forged = await createAccountRecord({ alias: 'Pat', namespace: NS, keys: { ...(await generateRandomPair({ postQuantum: false })), pub: owner.pub, priv: owner.priv }, password: 'x', legacy: true });
+  const { sig: _sig, ...unsigned } = { ...forged, seq: Number.MAX_SAFE_INTEGER };
+  const big = { ...unsigned, sig: await signMessage(signedText(unsigned), owner.priv) };
+  assert.equal(await verifyAccountRecord(big), true);
+  assert.deepEqual(await b.store.handle({ action: 'idp-put', record: big, from_relay: true }), { ok: false, error: 'upgrade' });
+  b.up = true;
+  c.up = true;
+  const found = (await c.store.handle({ action: 'idp-get', namespace: NS, alias: 'pat' })).record;
+  assert.equal(found?.v, 2);
+  assert.equal(found?.qpub, owner.qpub);
+});
+
+test('a version 1 record held elsewhere is never adopted, and post-quantum owners in conflict are not either', async () => {
+  const dir = await mkdtemp(path.join(os.tmpdir(), 'pigeonidp-fed-'));
+  const stale = await generateRandomPair({ postQuantum: false });
+  const v1 = await createAccountRecord({ alias: 'Lee', namespace: NS, keys: stale, password: 'pw', legacy: true });
+  await writeFile(path.join(dir, 'identities.json'), JSON.stringify({ version: 1, records: [v1] }));
+  const holder = await createRelayIdentityStore({ dataDir: dir });
+  const asker = await createRelayIdentityStore({
+    dataDir: await mkdtemp(path.join(os.tmpdir(), 'pigeonidp-fed-')),
+    otherRelays: () => ['http://holder'],
+    fetch: async (_url, init) => new Response(JSON.stringify(await holder.handle(JSON.parse(init.body)))),
+  });
+  assert.equal((await asker.handle({ action: 'idp-get', namespace: NS, alias: 'lee' })).record, null, 'not adopted');
+  // But the name is not free here either.
+  const someone = await generateRandomPair();
+  const claim = await createAccountRecord({ alias: 'Lee', namespace: NS, keys: someone, password: 'x' });
+  assert.deepEqual(await asker.handle({ action: 'idp-put', record: claim }), { ok: false, error: 'taken' });
 });

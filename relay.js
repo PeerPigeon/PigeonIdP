@@ -98,21 +98,33 @@ export async function createRelayIdentityStore({
     return response.ok ? JSON.parse(text) : null;
   }
 
-  /** The record other relays hold for a name: the first owner's, newest version. */
+  /**
+   * What the other relays hold for a name:
+   *   record  the post-quantum (version 2) record to adopt, when they agree on
+   *           one owner (one pub and qpub); its newest version
+   *   owners  the distinct keys holding it there (any version), so a new
+   *           name is refused when anyone holds it elsewhere
+   * Version 1 records are never adopted from another relay: their P-256
+   * signature is all that vouches for them, so they would let someone who can
+   * forge it plant an older record over an upgraded one. And when relays
+   * disagree on a post-quantum owner, none is adopted: nothing in the records
+   * says which came first that the author could not have set.
+   */
   async function askOthers(namespace, alias) {
     const bases = await relayBases();
-    if (bases.length === 0) return null;
+    if (bases.length === 0) return { record: null, owners: [] };
     const answers = await Promise.allSettled(bases.map((base) => ask(base, { action: 'idp-get', namespace, alias })));
-    let best = null;
+    const owners = new Map(); // `${pub}|${qpub}` -> newest record of that owner
     for (const answer of answers) {
       const record = answer.status === 'fulfilled' ? answer.value?.record : null;
       if (!record || record.namespace !== namespace || aliasKey(record.alias) !== aliasKey(alias)) continue;
       if (!await verifyAccountRecord(record)) continue;
-      if (!best) best = record;
-      else if (record.pub === best.pub) { if (record.seq > best.seq) best = record; }
-      else if (record.created < best.created) best = record;
+      const owner = `${record.pub}|${isPostQuantumRecord(record) ? record.qpub : ''}`;
+      const held = owners.get(owner);
+      if (!held || record.seq > held.seq) owners.set(owner, record);
     }
-    return best;
+    const quantum = [...owners.values()].filter(isPostQuantumRecord);
+    return { record: quantum.length === 1 ? quantum[0] : null, owners: [...owners.values()] };
   }
 
   async function keep(record) {
@@ -137,7 +149,7 @@ export async function createRelayIdentityStore({
         if (!namespace || !aliasKey(alias)) return { ok: false, error: 'namespace and alias are required' };
         let record = records.get(keyOf(namespace, alias)) ?? null;
         if (!record && !fromRelay) {
-          record = await askOthers(namespace, alias);
+          record = (await askOthers(namespace, alias)).record;
           if (record) await keep(record);
         }
         return { ok: true, record };
@@ -146,17 +158,26 @@ export async function createRelayIdentityStore({
         const record = body.record;
         if (!await verifyAccountRecord(record)) return { ok: false, error: 'invalid' };
         const key = keyOf(record.namespace, record.alias);
-        // A name new to this relay may be registered on another one already.
-        if (!records.has(key) && !fromRelay) {
+        // New names are post-quantum from the start, from browsers and other
+        // relays alike (anyone can claim to be a relay); version 1 records stay
+        // only where they were already kept, until their accounts upgrade.
+        if (!records.has(key) && !isPostQuantumRecord(record)) return { ok: false, error: 'upgrade' };
+        // A name new to this relay may be registered on another one already:
+        // checked whoever sends it. Requests between relays never ask
+        // further, so this does not go round.
+        if (!records.has(key)) {
           const elsewhere = await askOthers(record.namespace, record.alias);
-          if (elsewhere) await keep(elsewhere);
+          if (elsewhere.owners.some((other) => other.pub !== record.pub
+            || (isPostQuantumRecord(other) && other.qpub !== record.qpub))) {
+            if (elsewhere.record) await keep(elsewhere.record);
+            return { ok: false, error: 'taken' };
+          }
+          // The same owner elsewhere: keep its newest post-quantum version too.
+          if (elsewhere.record) await keep(elsewhere.record);
         }
         const verdict = compareAccountRecords(records.get(key), record);
         if (verdict === 'taken') return { ok: false, error: 'taken' };
         if (verdict === 'stale') return { ok: true, stored: false };
-        // New names are post-quantum from the start; version 1 records are
-        // only kept for accounts that already existed (until they upgrade).
-        if (!records.has(key) && !isPostQuantumRecord(record) && !fromRelay) return { ok: false, error: 'upgrade' };
         if (!records.has(key) && records.size >= maxRecords) return { ok: false, error: 'full' };
         records.set(key, record);
         await save();
