@@ -1,7 +1,7 @@
 {
   "name": "pigeonidp",
-  "version": "1.0.0",
-  "description": "P2P SAML identity provider using PeerPigeon 1.0.6 WebDHT and UnSEA",
+  "version": "1.0.1",
+  "description": "P2P SAML identity provider using PeerPigeon and UnSEA",
   "main": "index.js",
   "type": "module",
   "scripts": {
@@ -46,9 +46,9 @@
     "LICENSE"
   ],
   "peerDependencies": {
-    "peerpigeon": "*",
+    "cors": "^2.8.5",
     "express": "^4.18.2",
-    "cors": "^2.8.5"
+    "peerpigeon": "*"
   },
   "peerDependenciesMeta": {
     "peerpigeon": {

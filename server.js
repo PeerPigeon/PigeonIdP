@@ -15,7 +15,7 @@ const PORT = process.env.PORT || 3000;
 const NAMESPACE = process.env.NAMESPACE || 'pigeonidp-server';
 const SIGNALING_SERVERS = process.env.SIGNALING_SERVERS 
   ? process.env.SIGNALING_SERVERS.split(',')
-  : ['wss://pigeonhub.fli.dev'];
+  : undefined; // PeerPigeon's own relays
 // Set IDP_ENTITY_ID to the public HTTPS address the server is reached at.
 const IDP_ENTITY_ID = process.env.IDP_ENTITY_ID || `http://localhost:${PORT}`;
 const IDP_SSO_URL = process.env.IDP_SSO_URL || `${IDP_ENTITY_ID}/saml/sso`;
@@ -35,7 +35,7 @@ let saml = null;
 async function initIdP() {
   console.log('Initializing PigeonIdP server...');
   console.log(`Namespace: ${NAMESPACE}`);
-  console.log(`Signaling servers: ${SIGNALING_SERVERS.join(', ')}`);
+  console.log(`Signaling servers: ${SIGNALING_SERVERS ? SIGNALING_SERVERS.join(', ') : "PeerPigeon's defaults"}`);
   
   idp = new PigeonIdP({
     namespace: NAMESPACE,

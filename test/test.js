@@ -25,7 +25,7 @@ async function runTests() {
     console.log('Test 1: Create IdP instance');
     const idp = new PigeonIdP({
       namespace: 'test-namespace',
-      signalingServers: ['wss://pigeonhub.fli.dev']
+      ...(process.env.PIGEONIDP_RELAY ? { signalingServers: [process.env.PIGEONIDP_RELAY] } : {})
     });
     assert(idp !== null, 'IdP instance created');
     assert(idp.namespace === 'test-namespace', 'Namespace set correctly');
@@ -153,8 +153,8 @@ async function runTests() {
 
     // Test 18: Multiple namespaces
     console.log('\nTest 18: Multiple namespaces');
-    const idp1 = new PigeonIdP({ namespace: 'namespace1' });
-    const idp2 = new PigeonIdP({ namespace: 'namespace2' });
+    const idp1 = new PigeonIdP({ namespace: 'namespace1', ...(process.env.PIGEONIDP_RELAY ? { signalingServers: [process.env.PIGEONIDP_RELAY] } : {}) });
+    const idp2 = new PigeonIdP({ namespace: 'namespace2', ...(process.env.PIGEONIDP_RELAY ? { signalingServers: [process.env.PIGEONIDP_RELAY] } : {}) });
     await idp1.init();
     await idp2.init();
     assert(idp1.namespace !== idp2.namespace, 'Different namespaces');

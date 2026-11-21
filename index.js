@@ -1,11 +1,12 @@
 /**
  * PigeonIdP - P2P SAML Identity Provider
  * 
- * Uses PeerPigeon WebDHT for decentralized storage and UnSEA for cryptographic operations.
+ * Uses PeerPigeon's replicated storage (a PeerPigeonNode in the namespace's room) and UnSEA
+ * for cryptographic operations.
  * Supports custom namespaces for integration with PigeonHub.
  */
 
-import { PeerPigeonMesh, WebDHT } from 'peerpigeon';
+import { PeerPigeonNode } from 'peerpigeon';
 import {
   generateRandomPair,
   signMessage,
@@ -27,12 +28,12 @@ export class PigeonIdP {
    * Create a new PigeonIdP instance
    * @param {Object} options - Configuration options
    * @param {string} [options.namespace='default'] - Custom namespace for the IdP
-   * @param {Array<string>} [options.signalingServers] - Array of signaling server URLs
-   * @param {Object} [options.meshOptions] - Additional options for PeerPigeonMesh
+   * @param {Array<string>} [options.signalingServers] - Signaling relay URLs (default: PeerPigeon's relays)
+   * @param {Object} [options.meshOptions] - Additional options for PeerPigeonNode
    */
   constructor(options = {}) {
     this.namespace = options.namespace || 'default';
-    this.signalingServers = options.signalingServers || ['wss://pigeonhub.fli.dev'];
+    this.signalingServers = options.signalingServers || null;
     this.meshOptions = options.meshOptions || {};
     
     this.mesh = null;
@@ -50,18 +51,23 @@ export class PigeonIdP {
       return;
     }
 
-    // Initialize PeerPigeon mesh network
-    this.mesh = new PeerPigeonMesh({
-      signalingServers: this.signalingServers,
-      namespace: this.namespace,
+    // A PeerPigeon node in the namespace's room, with storage replicated between its peers.
+    this.mesh = new PeerPigeonNode({
+      networkId: 'pigeonidp',
+      sessionId: this.namespace,
+      ...(this.signalingServers ? { signalingServers: this.signalingServers } : {}),
+      storage: {},
       ...this.meshOptions
     });
 
-    await this.mesh.init();
+    await this.mesh.start();
 
-    // Initialize WebDHT for distributed storage
-    // WebDHT is ready to use immediately after construction
-    this.webDHT = new WebDHT(this.mesh);
+    // put/get by key (as WebDHT had), on the room's public records.
+    const storage = this.mesh.storage;
+    this.webDHT = {
+      put: async (key, value) => { await storage.put('public', key, value); return true; },
+      get: async (key) => (await storage.retrieve('public', key))?.value ?? null
+    };
 
     this.initialized = true;
   }
@@ -89,6 +95,7 @@ export class PigeonIdP {
     const publicKeyData = {
       pub: this.keys.pub,
       epub: this.keys.epub,
+      ...(this.keys.kpub ? { kpub: this.keys.kpub } : {}),
       alias,
       namespace: this.namespace,
       created: Date.now()
@@ -172,7 +179,8 @@ export class PigeonIdP {
       throw new Error('No identity loaded. Create or load an identity first');
     }
 
-    return await decryptMessageWithMeta(encryptedMessage, this.keys.epriv);
+    // The whole pair: a post-quantum message (unsea 3) needs kpriv as well as epriv.
+    return await decryptMessageWithMeta(encryptedMessage, this.keys);
   }
 
   /**
@@ -243,6 +251,7 @@ export class PigeonIdP {
     const identityData = {
       pub: this.keys.pub,
       epub: this.keys.epub,
+      ...(this.keys.kpub ? { kpub: this.keys.kpub } : {}),
       profile,
       namespace: this.namespace,
       registered: Date.now()
@@ -338,7 +347,9 @@ export class PigeonIdP {
       priv: await exportToJWK(this.keys.priv),
       pub: this.keys.pub, // Public key is already in portable format
       epriv: await exportToJWK(this.keys.epriv),
-      epub: this.keys.epub // Encryption public key is already in portable format
+      epub: this.keys.epub, // Encryption public key is already in portable format
+      // Post-quantum keys (unsea 3), already strings: kept so a moved identity still decrypts.
+      ...(this.keys.kpub ? { kpub: this.keys.kpub, kpriv: this.keys.kpriv } : {})
     };
   }
 
@@ -352,7 +363,8 @@ export class PigeonIdP {
       priv: typeof jwkKeys.priv === 'string' ? jwkKeys.priv : await importFromJWK(jwkKeys.priv),
       pub: jwkKeys.pub, // Public key is already in string format
       epriv: typeof jwkKeys.epriv === 'string' ? jwkKeys.epriv : await importFromJWK(jwkKeys.epriv),
-      epub: jwkKeys.epub // Encryption public key is already in string format
+      epub: jwkKeys.epub, // Encryption public key is already in string format
+      ...(jwkKeys.kpub ? { kpub: jwkKeys.kpub, kpriv: jwkKeys.kpriv } : {})
     };
   }
 
@@ -379,7 +391,8 @@ export class PigeonIdP {
 
     return {
       pub: this.keys.pub,
-      epub: this.keys.epub
+      epub: this.keys.epub,
+      ...(this.keys.kpub ? { kpub: this.keys.kpub } : {})
     };
   }
 
@@ -389,7 +402,7 @@ export class PigeonIdP {
    */
   async disconnect() {
     if (this.mesh) {
-      this.mesh.disconnect();
+      await this.mesh.destroy();
       this.mesh = null;
       this.webDHT = null;
       this.initialized = false;

@@ -1,17 +1,17 @@
 # 🕊️ PigeonIdP
 
-> P2P SAML Identity Provider using PeerPigeon WebDHT and UnSEA
+> P2P SAML Identity Provider using PeerPigeon and UnSEA
 
-A decentralized identity provider (IdP) solution that works in browsers using PeerPigeon's WebDHT for storage and UnSEA for cryptographic operations. Built for integration with PigeonHub and supports custom namespaces.
+A decentralized identity provider (IdP) solution that works in browsers using PeerPigeon's replicated storage and UnSEA for cryptographic operations. Supports custom namespaces.
 
-**Built with PeerPigeon 1.0.6** - Latest stable release with improved WebRTC mesh networking and DHT performance.
+**Built with PeerPigeon 1.2** and **UnSEA 3** (post-quantum hybrid keys).
 
 ## Features
 
 - 🔐 **Decentralized Authentication** - No central authority required
 - 🌐 **Browser-First** - Works natively in modern browsers
 - 🔑 **UnSEA Cryptography** - Uses UnSEA for signing, encryption, and key management
-- 💾 **WebDHT Storage** - Distributed hash table for identity storage
+- 💾 **Replicated storage** - Identities kept in PeerPigeon storage, shared between the namespace's peers
 - 🏷️ **Custom Namespaces** - Support for namespace-specific authentication
 - 🤝 **PigeonHub Integration** - Designed to work with PigeonHub servers
 - 📦 **NPM Module** - Easy to import and use in any project
@@ -34,8 +34,8 @@ import { PigeonIdP } from 'pigeonidp';
 
 // Create an IdP instance with custom namespace
 const idp = new PigeonIdP({
-  namespace: 'my-app-namespace',
-  signalingServers: ['wss://pigeonhub.fli.dev']
+  namespace: 'my-app-namespace'
+  // signalingServers: ['wss://your-relay.example/ws']  (default: PeerPigeon's relays)
 });
 
 // Initialize the IdP
@@ -247,13 +247,13 @@ new PigeonIdP(options)
 
 **Options:**
 - `namespace` (string, default: 'default') - Custom namespace for the IdP
-- `signalingServers` (array, default: ['wss://pigeonhub.fli.dev']) - Signaling servers for WebRTC (uses PeerPigeon 1.0.6)
-- `meshOptions` (object) - Additional options for PeerPigeonMesh
+- `signalingServers` (array, default: PeerPigeon's relays) - FreeRTC signaling relays for WebRTC
+- `meshOptions` (object) - Additional options for PeerPigeonNode
 
 ### Methods
 
 #### `init()`
-Initialize the IdP with mesh network and WebDHT.
+Start a PeerPigeon node in the namespace's room, with replicated storage.
 
 ```javascript
 await idp.init();
@@ -437,9 +437,9 @@ See [examples/browser-example.html](examples/browser-example.html) for an intera
 
 PigeonIdP is built on three key technologies:
 
-1. **PeerPigeon** (v1.0.4) - Provides WebRTC mesh networking and WebDHT for distributed storage
+1. **PeerPigeon** (1.2) - WebRTC mesh networking and replicated storage
 2. **UnSEA** - Cryptographic toolkit for key generation, signing, encryption (using WebCrypto and noble-curves)
-3. **WebDHT** - Distributed hash table for storing and discovering identities
+3. **PeerPigeon storage** - Public records for storing and discovering identities
 
 ### Data Flow
 
@@ -450,7 +450,7 @@ UnSEA (Key Generation)
     ↓
 Local Storage (Encrypted with Password)
     ↓
-WebDHT (Public Keys & Profiles)
+PeerPigeon storage (Public Keys & Profiles)
     ↓
 PeerPigeon Mesh (P2P Network)
 ```
@@ -480,10 +480,9 @@ PigeonIdP is designed to integrate seamlessly with PigeonHub:
 
 ## Dependencies
 
-- `peerpigeon` (^1.0.4) - Includes:
-  - UnSEA for cryptography
-  - WebDHT for distributed storage
-  - PigeonRTC for WebRTC support
+- `unsea` (^3.1.0) - Cryptography
+- `peerpigeon` (peer dependency) - Mesh networking and storage
+- `express`, `cors` (peer dependencies) - Only for `server.js`
 
 ## Browser Compatibility
 
