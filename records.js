@@ -28,6 +28,7 @@ import {
   signMessage,
   upgradePair,
   verifyMessage,
+  getSubtle,
 } from 'unsea';
 
 export const RECORD_VERSION = 2;
@@ -98,9 +99,10 @@ export function signedText(record) {
   ]);
 }
 
+// getSubtle(): WebCrypto's, or unsea's stand-in on a page without crypto.subtle (plain http).
 async function passwordKey(password, salt, usage) {
-  const base = await crypto.subtle.importKey('raw', encoder.encode(password), 'PBKDF2', false, ['deriveKey']);
-  return crypto.subtle.deriveKey(
+  const base = await getSubtle().importKey('raw', encoder.encode(password), 'PBKDF2', false, ['deriveKey']);
+  return getSubtle().deriveKey(
     { name: 'PBKDF2', salt, iterations: PBKDF2_ITERATIONS, hash: 'SHA-256' },
     base,
     { name: 'AES-GCM', length: 256 },
@@ -114,14 +116,14 @@ export async function encryptKeys(keys, password) {
   const salt = crypto.getRandomValues(new Uint8Array(16));
   const iv = crypto.getRandomValues(new Uint8Array(12));
   const key = await passwordKey(password, salt, 'encrypt');
-  const data = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, key, encoder.encode(JSON.stringify(keys)));
+  const data = await getSubtle().encrypt({ name: 'AES-GCM', iv }, key, encoder.encode(JSON.stringify(keys)));
   return { encrypted: true, salt: b64(salt), iv: b64(iv), data: b64(data) };
 }
 
 /** The key pair inside an encrypted blob; throws on a wrong password. */
 export async function decryptKeys(blob, password) {
   const key = await passwordKey(password, unb64(blob.salt), 'decrypt');
-  const plain = await crypto.subtle.decrypt({ name: 'AES-GCM', iv: unb64(blob.iv) }, key, unb64(blob.data));
+  const plain = await getSubtle().decrypt({ name: 'AES-GCM', iv: unb64(blob.iv) }, key, unb64(blob.data));
   return JSON.parse(decoder.decode(plain));
 }
 
